@@ -1,5 +1,6 @@
 "use server";
 
+import { isAdminGroupName } from "@/lib/access";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/passwords";
 
@@ -106,20 +107,23 @@ export async function signup(
       }
     }
 
-    const group = db.prepare("SELECT id FROM groups WHERE id = ?").get(groupId);
+    const group = db.prepare("SELECT id, name FROM groups WHERE id = ?").get(groupId) as
+      | { id: number; name: string }
+      | undefined;
     if (!group) {
       fieldErrors.groupId = "Select a group.";
     }
 
-    if (hasErrors(fieldErrors)) {
+    if (hasErrors(fieldErrors) || !group) {
       db.exec("ROLLBACK");
       return { fieldErrors };
     }
 
+    const role = isAdminGroupName(String(group.name)) ? "Admin" : "Member";
     db.prepare(
       `INSERT INTO users (email, password, name, nickname, group_id, role, status, sort_order)
-       VALUES (?, ?, ?, ?, ?, 'Member', 'Pending', COALESCE((SELECT MAX(sort_order) + 1 FROM users WHERE group_id = ?), 0))`,
-    ).run(email, hashPassword(password), name, nickname, groupId, groupId);
+       VALUES (?, ?, ?, ?, ?, ?, 'Pending', COALESCE((SELECT MAX(sort_order) + 1 FROM users WHERE group_id = ?), 0))`,
+    ).run(email, hashPassword(password), name, nickname, groupId, role, groupId);
 
     db.exec("COMMIT");
     return { success: true };

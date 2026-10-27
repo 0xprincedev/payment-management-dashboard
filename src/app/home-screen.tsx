@@ -62,7 +62,7 @@ export default function HomeScreen({
                       "&:hover": { color: "primary.main" },
                     }}
                   >
-                    {widget.name}
+                    {user.role === "Admin" ? `${widget.groupName} · ${widget.name}` : widget.name}
                   </Typography>
                 ))}
               </Box>

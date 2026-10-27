@@ -18,9 +18,11 @@ import { submitFormOnEnter } from "@/lib/submit-on-enter";
 export default function ExportDialog({
   widgetId,
   defaultFilename,
+  size = "medium",
 }: {
   widgetId: number;
   defaultFilename: string;
+  size?: "small" | "medium";
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -30,6 +32,7 @@ export default function ExportDialog({
       <Button
         type="button"
         variant="outlined"
+        size={size}
         startIcon={<FileDownloadOutlinedIcon />}
         onClick={() => setOpen(true)}
       >

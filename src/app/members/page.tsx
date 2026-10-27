@@ -4,8 +4,10 @@ import { redirect } from "next/navigation";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
-import { listGroupProfiles } from "@/lib/members";
+import { isAdmin, isBoss } from "@/lib/access";
+import { listGroupProfiles, listGroupsWithProfiles } from "@/lib/members";
 import { getCurrentUser } from "@/lib/session";
+import AdminMembers from "./admin-members";
 import MembersTable from "./members-table";
 
 export const metadata: Metadata = {
@@ -24,7 +26,22 @@ export default function MembersPage() {
 async function MembersContent() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  if (user.role !== "Boss") redirect("/");
+  if (!isBoss(user.role) && !isAdmin(user.role)) redirect("/");
+
+  if (user.role === "Admin") {
+    const groups = await listGroupsWithProfiles();
+    return (
+      <AppShell user={user} current="members">
+        <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
+          Members
+        </Typography>
+        <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
+          Every group. Change a member&apos;s group or role, or drag members into the order used in the spreadsheet export.
+        </Typography>
+        <AdminMembers groups={groups} selfId={user.id} />
+      </AppShell>
+    );
+  }
 
   const members = await listGroupProfiles(user.groupId);
 

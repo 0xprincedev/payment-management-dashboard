@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { isAdmin, isBoss } from "@/lib/access";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 
@@ -34,7 +35,7 @@ export async function createWidget(
 ): Promise<FormState> {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  if (user.role !== "Boss") {
+  if (!isBoss(user.role)) {
     return { error: "Only a boss can create a payment widget." };
   }
 
@@ -57,6 +58,80 @@ export async function createWidget(
     .run(user.groupId, name, user.id);
 
   redirect(`/payments/${Number(result.lastInsertRowid)}`);
+}
+
+function widgetReturnPath(value: string, widgetId: number) {
+  if (value === "/payments" || value === `/payments/${widgetId}`) return value;
+  return "/payments";
+}
+
+function loadGroupWidget(groupId: number, widgetId: number) {
+  if (!Number.isInteger(widgetId) || widgetId <= 0) return null;
+  const widget = db
+    .prepare("SELECT id, name FROM payment_widgets WHERE id = ? AND group_id = ?")
+    .get(widgetId, groupId) as { id: number; name: string } | undefined;
+  return widget ?? null;
+}
+
+export async function renameWidget(
+  _state: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!isBoss(user.role)) return { error: "Only a boss can edit a payment widget." };
+
+  const widgetId = Number(readText(formData, "widgetId"));
+  const widget = loadGroupWidget(user.groupId, widgetId);
+  if (!widget) return { error: "That widget is not in your group." };
+
+  const name = readText(formData, "name");
+  if (!name) return { error: "Enter a widget name." };
+  if (name.length > 80) return { error: "Name must be 80 characters or fewer." };
+
+  const existing = db
+    .prepare(
+      "SELECT id FROM payment_widgets WHERE group_id = ? AND name = ? COLLATE NOCASE AND id != ?",
+    )
+    .get(user.groupId, name, widget.id);
+  if (existing) return { error: "A widget with this name already exists." };
+
+  db.prepare("UPDATE payment_widgets SET name = ? WHERE id = ? AND group_id = ?").run(
+    name,
+    widget.id,
+    user.groupId,
+  );
+
+  redirect(widgetReturnPath(readText(formData, "returnTo"), widget.id));
+}
+
+export async function deleteWidget(
+  _state: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!isBoss(user.role)) return { error: "Only a boss can delete a payment widget." };
+
+  const widgetId = Number(readText(formData, "widgetId"));
+  const widget = loadGroupWidget(user.groupId, widgetId);
+  if (!widget) return { error: "That widget is not in your group." };
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM payments WHERE widget_id = ?").run(widget.id);
+    db.prepare("DELETE FROM payment_widgets WHERE id = ? AND group_id = ?").run(widget.id, user.groupId);
+    db.exec("COMMIT");
+  } catch {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // The transaction was already closed.
+    }
+    return { error: "That widget could not be deleted." };
+  }
+
+  redirect("/payments");
 }
 
 function invalidDate(paidOn: string) {
@@ -111,7 +186,7 @@ function loadEditablePayment(user: { id: number; role: string; groupId: number }
     | undefined;
 
   if (!payment) return null;
-  if (user.role !== "Boss" && Number(payment.user_id) !== user.id) return null;
+  if (isAdmin(user.role) || (!isBoss(user.role) && Number(payment.user_id) !== user.id)) return null;
   return payment;
 }
 
@@ -121,6 +196,7 @@ export async function addPayment(
 ): Promise<FormState> {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (isAdmin(user.role)) return { error: "Admins can view payments, not add them." };
 
   const widgetId = Number(readText(formData, "widgetId"));
   const kind = readText(formData, "kind");
@@ -235,4 +311,78 @@ export async function deletePayment(
 
   db.prepare("DELETE FROM payments WHERE id = ?").run(payment.id);
   redirect(`/payments/${Number(payment.widget_id)}`);
+}
+
+export type GroupTransaction = {
+  id: number;
+  member: string;
+  memberSort: number;
+  paidOn: string;
+  amountCents: number;
+  note: string;
+};
+
+export type GroupTransactions = {
+  groupName: string;
+  totalCents: number;
+  rows: GroupTransaction[];
+};
+
+export async function loadGroupTransactions(
+  widgetId: number,
+  groupId: number,
+): Promise<GroupTransactions | { error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Sign in to view these transactions." };
+  if (!isBoss(user.role) && !isAdmin(user.role)) {
+    return { error: "Only a boss or an admin can view another group's transactions." };
+  }
+
+  const widget = db
+    .prepare("SELECT id, group_id FROM payment_widgets WHERE id = ? AND (? = 1 OR group_id = ?)")
+    .get(widgetId, isAdmin(user.role) ? 1 : 0, user.groupId) as { id: number; group_id: number } | undefined;
+  if (!widget) return { error: "That widget is not in your group." };
+  const ownerGroupId = Number(widget.group_id);
+  if (!Number.isInteger(groupId) || groupId <= 0) return { error: "That group could not be found." };
+  if (groupId === ownerGroupId) return { error: "Your own group does not open here." };
+
+  const group = db
+    .prepare("SELECT name FROM groups WHERE id = ?")
+    .get(groupId) as { name: string } | undefined;
+  if (!group) return { error: "That group could not be found." };
+
+  const rows = db
+    .prepare(
+      `SELECT payments.id,
+              users.nickname AS member,
+              users.sort_order AS member_sort,
+              COALESCE(counterparty.nickname, '') AS note,
+              payments.paid_on,
+              payments.amount_cents
+       FROM payments
+       JOIN users ON users.id = payments.user_id
+       LEFT JOIN users AS counterparty ON counterparty.id = payments.member_id
+       WHERE payments.kind = 'internal'
+         AND payments.widget_id = ?
+         AND users.group_id = ?
+         AND users.status = 'Approved'
+         AND counterparty.group_id = ?
+       ORDER BY users.sort_order, users.id, payments.paid_on, payments.id`,
+    )
+    .all(widgetId, ownerGroupId, groupId);
+
+  const transactions = rows.map((row) => ({
+    id: Number(row.id),
+    member: String(row.member),
+    memberSort: Number(row.member_sort),
+    paidOn: String(row.paid_on),
+    amountCents: Number(row.amount_cents),
+    note: String(row.note),
+  }));
+
+  return {
+    groupName: String(group.name).trim() || `Group ${groupId}`,
+    totalCents: transactions.reduce((sum, row) => sum + row.amountCents, 0),
+    rows: transactions,
+  };
 }

@@ -34,6 +34,8 @@ import {
   updateMemberPassword,
   type MemberActionState,
 } from "./actions";
+import MemberGroupField from "./member-group-field";
+import MemberRoleField from "./member-role-field";
 import MemberStatusField from "./member-status-field";
 
 export type MemberRow = {
@@ -66,11 +68,29 @@ function rowIndexAt(body: HTMLTableSectionElement, clientY: number) {
 export default function MembersTable({
   members,
   selfId,
+  viewerRole = "Boss",
+  groupId,
+  groups,
+  onReordered,
+  onGroupResult,
+  onRoleChanged,
 }: {
   members: MemberRow[];
   selfId: number;
+  viewerRole?: MemberRow["role"];
+  groupId?: number;
+  groups?: { id: number; name: string }[];
+  onReordered?: (members: MemberRow[]) => void;
+  onGroupResult?: (memberId: number, result: MemberActionState) => void;
+  onRoleChanged?: (memberId: number, role: MemberRow["role"]) => void;
 }) {
+  const incomingKey = members.map((member) => member.id).join(",");
   const [rows, setRows] = useState(members);
+  const [loadedKey, setLoadedKey] = useState(incomingKey);
+  if (loadedKey !== incomingKey) {
+    setLoadedKey(incomingKey);
+    setRows(members);
+  }
   const [savingOrder, setSavingOrder] = useState(false);
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ severity: "success" | "error"; text: string } | null>(null);
@@ -102,6 +122,8 @@ export default function MembersTable({
       rowsRef.current = previous;
       setRows(previous);
       setNotice({ severity: "error", text: result.error });
+    } else {
+      onReordered?.(updated);
     }
     setSavingOrder(false);
   }
@@ -200,10 +222,13 @@ export default function MembersTable({
       ) : null}
       <Paper elevation={0} sx={{ border: 1, borderColor: "divider", overflow: "hidden" }}>
         <TableContainer>
-          <Table size="small" sx={{ minWidth: 980, userSelect: draggingId === null ? "auto" : "none" }}>
+          <Table size="small" sx={{ minWidth: groups ? 1160 : 980, userSelect: draggingId === null ? "auto" : "none" }}>
             <TableHead>
               <TableRow>
-                {["No", "Name", "Nickname", "Email", "Role", "Status"].map((column) => (
+                {(groups
+                  ? ["No", "Name", "Nickname", "Email", "Group", "Role", "Status"]
+                  : ["No", "Name", "Nickname", "Email", "Role", "Status"]
+                ).map((column) => (
                   <TableCell key={column} sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
                     {column}
                   </TableCell>
@@ -244,9 +269,43 @@ export default function MembersTable({
                   <TableCell sx={{ whiteSpace: "nowrap" }}>{member.name}</TableCell>
                   <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{member.nickname}</TableCell>
                   <TableCell>{member.email}</TableCell>
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>{member.role}</TableCell>
+                  {groups && groupId != null ? (
+                    <TableCell>
+                      <MemberGroupField
+                        userId={member.id}
+                        nickname={member.nickname}
+                        groupId={groupId}
+                        groups={groups}
+                        onResult={(result) => onGroupResult?.(member.id, result)}
+                      />
+                    </TableCell>
+                  ) : null}
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    {viewerRole === "Admin" && (member.role === "Boss" || member.role === "Member") ? (
+                      <MemberRoleField
+                        userId={member.id}
+                        nickname={member.nickname}
+                        role={member.role}
+                        onResult={(result) => {
+                          report(result);
+                          if (result.role !== "Boss" && result.role !== "Member") return;
+                          const nextRole = result.role;
+                          setRows((current) => {
+                            const updated = current.map((row) =>
+                              row.id === member.id ? { ...row, role: nextRole } : row,
+                            );
+                            rowsRef.current = updated;
+                            return updated;
+                          });
+                          onRoleChanged?.(member.id, nextRole);
+                        }}
+                      />
+                    ) : (
+                      member.role
+                    )}
+                  </TableCell>
                   <TableCell>
-                    {member.id === selfId ? (
+                    {member.id === selfId || (viewerRole !== "Admin" && member.role === "Admin") ? (
                       <Typography variant="body2">{member.status}</Typography>
                     ) : (
                       <MemberStatusField
@@ -266,6 +325,7 @@ export default function MembersTable({
                     )}
                   </TableCell>
                   <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    {viewerRole !== "Admin" && member.role === "Admin" ? null : (
                     <AccountActions
                       member={member}
                       onEmail={(email) => {
@@ -280,6 +340,7 @@ export default function MembersTable({
                         setNotice({ severity: "success", text: "Account deleted." });
                       }}
                     />
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

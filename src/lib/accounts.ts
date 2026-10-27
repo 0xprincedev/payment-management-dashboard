@@ -72,6 +72,45 @@ export async function listGroupMemberAccounts(
   }));
 }
 
+export async function listAllAccountsByGroup(): Promise<
+  { id: number; name: string; members: MemberAccounts[] }[]
+> {
+  await io();
+
+  const groups = db.prepare("SELECT id, name FROM groups ORDER BY sort_order, id").all();
+  const members = db
+    .prepare(
+      `SELECT id, name, nickname, group_id
+       FROM users
+       WHERE status = 'Approved'
+       ORDER BY group_id, sort_order, id`,
+    )
+    .all()
+    .map((row) => ({
+      id: Number(row.id),
+      name: String(row.name),
+      nickname: String(row.nickname),
+      groupId: Number(row.group_id),
+    }));
+
+  const grouped = await listAccountsByUsers(members.map((member) => member.id));
+  return groups.map((row) => {
+    const id = Number(row.id);
+    return {
+      id,
+      name: String(row.name),
+      members: members
+        .filter((member) => member.groupId === id)
+        .map((member) => ({
+          id: member.id,
+          name: member.name,
+          nickname: member.nickname,
+          accounts: grouped.get(member.id) ?? [],
+        })),
+    };
+  });
+}
+
 export async function listAccountsByUsers(userIds: number[]): Promise<Map<number, AccountRecord[]>> {
   await io();
   const grouped = new Map<number, AccountRecord[]>();

@@ -91,6 +91,14 @@ function migrate(database: DatabaseSync) {
     rebuildPayments(database, true, false);
   }
 
+  const groupColumns = database.prepare("PRAGMA table_info(groups)").all() as { name: string }[];
+  if (!groupColumns.some((column) => column.name === "sort_order")) {
+    database.exec("ALTER TABLE groups ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+    const orderedGroups = database.prepare("SELECT id FROM groups ORDER BY id").all() as { id: number }[];
+    const assignGroup = database.prepare("UPDATE groups SET sort_order = ? WHERE id = ?");
+    orderedGroups.forEach((group, index) => assignGroup.run(index, group.id));
+  }
+
   const userColumns = database.prepare("PRAGMA table_info(users)").all() as { name: string }[];
   if (!userColumns.some((column) => column.name === "sort_order")) {
     database.exec("ALTER TABLE users ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");

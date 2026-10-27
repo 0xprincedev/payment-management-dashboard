@@ -6,7 +6,7 @@ export async function listGroups(): Promise<Group[]> {
   await io();
 
   return db
-    .prepare("SELECT id, name FROM groups ORDER BY id")
+    .prepare("SELECT id, name FROM groups ORDER BY sort_order, id")
     .all()
     .map((row) => ({
       id: Number(row.id),

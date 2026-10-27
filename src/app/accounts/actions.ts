@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { isAdmin } from "@/lib/access";
 import type { AccountRecord } from "@/lib/account-record";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
@@ -21,6 +22,7 @@ function readText(formData: FormData, key: string) {
 async function requireUser() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
+  if (isAdmin(user.role)) return null;
   return user;
 }
 
@@ -77,6 +79,7 @@ export async function createAccount(
   formData: FormData,
 ): Promise<AccountActionState> {
   const user = await requireUser();
+  if (!user) return { error: "Admins can view accounts, not change them." };
   const fields = readFields(formData);
   if ("error" in fields) return { error: fields.error };
 
@@ -109,6 +112,7 @@ export async function createAccount(
 
 export async function reorderAccounts(orderedIds: number[]): Promise<AccountActionState> {
   const user = await requireUser();
+  if (!user) return { error: "Admins can view accounts, not change them." };
   if (!Array.isArray(orderedIds) || orderedIds.some((id) => !Number.isInteger(id) || id <= 0)) {
     return { error: "The account order could not be saved." };
   }
@@ -148,6 +152,7 @@ export async function updateAccount(
   formData: FormData,
 ): Promise<AccountActionState> {
   const user = await requireUser();
+  if (!user) return { error: "Admins can view accounts, not change them." };
   const id = accountId(formData);
   if (!id) return { error: "That account is not yours." };
   const fields = readFields(formData);
@@ -183,6 +188,7 @@ export async function deleteAccount(
   formData: FormData,
 ): Promise<AccountActionState> {
   const user = await requireUser();
+  if (!user) return { error: "Admins can view accounts, not change them." };
   const id = accountId(formData);
   if (!id) return { error: "That account is not yours." };
 

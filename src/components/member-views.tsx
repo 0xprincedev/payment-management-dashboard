@@ -27,7 +27,7 @@ export default function MemberViews({
   people: MemberPanel[];
   action?: ReactNode;
 }) {
-  const [view, setView] = useState<"list" | "tabs">("list");
+  const [view, setView] = useState<"list" | "tabs">("tabs");
   const [tab, setTab] = useState(ownId);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const selected = people.some((person) => person.id === tab) ? tab : (people[0]?.id ?? ownId);

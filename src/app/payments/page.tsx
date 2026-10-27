@@ -5,10 +5,14 @@ import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
-import { formatAmount, listWidgets, type PaymentWidget } from "@/lib/payments";
+import { isAdmin, isBoss } from "@/lib/access";
+import { formatAmount, listAllWidgets, listWidgets, type PaymentWidget } from "@/lib/payments";
 import { getCurrentUser } from "@/lib/session";
 import CreateWidgetForm from "./create-widget-form";
+import ExportDialog from "./export-dialog";
+import GroupTransactions from "./group-transactions";
 import RefreshWidgetButton from "./refresh-widget-button";
+import WidgetActions from "./widget-actions";
 
 export const metadata: Metadata = {
   title: "Payments",
@@ -27,7 +31,7 @@ async function PaymentsContent() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const widgets = await listWidgets(user.groupId, user);
+  const widgets = isAdmin(user.role) ? await listAllWidgets() : await listWidgets(user.groupId, user);
 
   return (
     <AppShell user={user} current="payments">
@@ -35,11 +39,13 @@ async function PaymentsContent() {
         Payments
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-        {user.role === "Boss"
-          ? `Create a widget for ${user.groupName}. Members select it and add their payments one by one.`
-          : "Select a widget, then add your payments one by one."}
+        {isAdmin(user.role)
+          ? "Every group's payment widgets."
+          : isBoss(user.role)
+            ? `Create a widget for ${user.groupName}. Members select it and add their payments one by one.`
+            : "Select a widget, then add your payments one by one."}
       </Typography>
-      {user.role === "Boss" ? (
+      {isBoss(user.role) ? (
         <Paper elevation={0} sx={{ maxWidth: 560, mt: 3, p: { xs: 2, sm: 3 }, border: 1, borderColor: "divider" }}>
           <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
             New widget
@@ -47,13 +53,21 @@ async function PaymentsContent() {
           <CreateWidgetForm />
         </Paper>
       ) : null}
-      <Box sx={{ display: "grid", gap: 2, mt: 3, maxWidth: 720 }}>
+      <Box sx={{ display: "grid", gap: 2, mt: 3, maxWidth: 920 }}>
         {widgets.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             No payment widgets yet.
           </Typography>
         ) : (
-          widgets.map((widget) => <WidgetLink key={widget.id} widget={widget} />)
+          widgets.map((widget) => (
+            <WidgetLink
+              key={widget.id}
+              widget={widget}
+              ownGroupId={widget.groupId}
+              canManage={isBoss(user.role)}
+              showGroup={isAdmin(user.role)}
+            />
+          ))
         )}
       </Box>
     </AppShell>
@@ -64,7 +78,17 @@ function money(cents: number) {
   return `${cents < 0 ? "-" : ""}$${formatAmount(Math.abs(cents))}`;
 }
 
-function WidgetLink({ widget }: { widget: PaymentWidget }) {
+function WidgetLink({
+  widget,
+  ownGroupId,
+  canManage,
+  showGroup,
+}: {
+  widget: PaymentWidget;
+  ownGroupId: number;
+  canManage: boolean;
+  showGroup: boolean;
+}) {
   const summary = widget.summary;
 
   return (
@@ -72,6 +96,7 @@ function WidgetLink({ widget }: { widget: PaymentWidget }) {
       elevation={0}
       sx={{
         position: "relative",
+        minWidth: 0,
         p: { xs: 2, sm: 2.5 },
         border: 1,
         borderColor: "divider",
@@ -83,11 +108,16 @@ function WidgetLink({ widget }: { widget: PaymentWidget }) {
       <Box
         component="a"
         href={`/payments/${widget.id}`}
-        sx={{ display: "block", pr: 5, color: "inherit", textDecoration: "none" }}
+        sx={{ display: "block", minWidth: 0, pr: 5, color: "inherit", textDecoration: "none" }}
       >
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
           {widget.name}
         </Typography>
+        {showGroup ? (
+          <Typography variant="body2" color="text.secondary">
+            {widget.groupName}
+          </Typography>
+        ) : null}
         {summary ? (
           <Box sx={{ mt: 1 }}>
             <Typography variant="h6" component="p" sx={{ fontWeight: 700 }}>
@@ -96,18 +126,17 @@ function WidgetLink({ widget }: { widget: PaymentWidget }) {
             <Typography variant="body2" color="text.secondary">
               Bank transactions {formatAmount(summary.bankCents)}
             </Typography>
-            {summary.internalByGroup.length > 0 ? (
-              <Box sx={{ mt: 0.5 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Internal transactions
-                </Typography>
-                {summary.internalByGroup.map((group) => (
-                  <Typography key={group.groupId} variant="body2" color="text.secondary">
-                    {group.name} {formatAmount(group.amountCents)}
-                  </Typography>
-                ))}
-              </Box>
-            ) : null}
+          </Box>
+        ) : null}
+      </Box>
+      {summary && summary.internalByGroup.length > 0 ? (
+        <GroupTransactions widgetId={widget.id} ownGroupId={ownGroupId} groups={summary.internalByGroup} />
+      ) : null}
+      <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, mt: 1.5 }}>
+        <ExportDialog widgetId={widget.id} defaultFilename={widget.name} size="small" />
+        {canManage ? (
+          <Box sx={{ ml: "auto" }}>
+            <WidgetActions widgetId={widget.id} name={widget.name} returnTo="/payments" compact />
           </Box>
         ) : null}
       </Box>

@@ -1,5 +1,6 @@
 import "server-only";
 import ExcelJS from "exceljs";
+import { isAdmin, isBoss } from "@/lib/access";
 import { listAccountsByUsers } from "@/lib/accounts";
 import type { AccountRecord } from "@/lib/account-record";
 import { exportBasename, exportFilenameError, exportPasswordError } from "@/lib/export-filename";
@@ -49,14 +50,14 @@ export async function createPaymentExport(user: CurrentUser, widgetId: number, r
   const basename = exportBasename(request.filename);
   if (!basename) return { error: "Choose a different filename." };
 
-  const widget = await getWidget(widgetId, user.groupId);
+  const widget = await getWidget(widgetId, isAdmin(user.role) ? null : user.groupId);
   if (!widget) return { error: "That payment widget was not found." };
 
   const sections: Section[] =
-    user.role === "Boss"
-      ? await listMemberPayments(widget.id, user)
+    isBoss(user.role) || isAdmin(user.role)
+      ? await listMemberPayments(widget.id, widget.groupId)
       : [{ id: user.id, name: user.name, nickname: user.nickname, payments: await listPayments(widget.id, user) }];
-  const plain = await workbookBuffer(sections, request.includeAccounts, user.groupId);
+  const plain = await workbookBuffer(sections, request.includeAccounts, widget.groupId);
   const encrypted = encryptXlsx(plain, request.password);
 
   return {
@@ -193,13 +194,45 @@ function writeAccounts(
   });
 }
 
+function summaryRows(payments: PaymentRecord[]) {
+  const rows: PaymentRecord[] = [];
+  const internalByPerson = new Map<string, PaymentRecord>();
+
+  for (const payment of payments) {
+    if (payment.kind === "bank") {
+      rows.push(payment);
+      continue;
+    }
+
+    const personKey = payment.memberId == null ? `name:${payment.memberNickname}` : `id:${payment.memberId}`;
+    const existing = internalByPerson.get(personKey);
+    if (existing) {
+      existing.amountCents += payment.amountCents;
+      continue;
+    }
+
+    const summary: PaymentRecord = {
+      ...payment,
+      info: "",
+      account: "",
+      paidOn: "",
+      note: payment.memberNickname,
+    };
+    internalByPerson.set(personKey, summary);
+    rows.push(summary);
+  }
+
+  return rows;
+}
+
 function writeMember(sheet: ExcelJS.Worksheet, section: Section, totalRow: number, ownGroupId: number) {
   const payments = section.payments;
-  const lastRow = totalRow + payments.length;
+  const rows = summaryRows(payments);
+  const lastRow = totalRow + rows.length;
   const name = sheet.getCell(totalRow, 1);
   name.value = section.name;
   paint(name);
-  if (payments.length > 0) sheet.mergeCells(totalRow, 1, lastRow, 1);
+  if (rows.length > 0) sheet.mergeCells(totalRow, 1, lastRow, 1);
 
   const label = sheet.getCell(totalRow, 2);
   label.value = "Total Amount";
@@ -215,7 +248,7 @@ function writeMember(sheet: ExcelJS.Worksheet, section: Section, totalRow: numbe
   paint(sheet.getCell(totalRow, 6));
   sheet.getRow(totalRow).height = 15.75;
 
-  payments.forEach((payment, index) => {
+  rows.forEach((payment, index) => {
     const rowNumber = totalRow + 1 + index;
     const internal = payment.kind === "internal";
     const fill = internal ? internalColor(payment.memberGroupId, ownGroupId) : paperFill;

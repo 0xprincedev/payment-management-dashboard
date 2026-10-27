@@ -7,7 +7,8 @@ import Typography from "@mui/material/Typography";
 import type { ReactNode } from "react";
 import BrandMark from "@/components/brand-mark";
 import ColorModeToggle from "@/components/color-mode-toggle";
-import { listWidgets } from "@/lib/payments";
+import { isAdmin } from "@/lib/access";
+import { listAllWidgets, listWidgets } from "@/lib/payments";
 import { getCurrentUser } from "@/lib/session";
 import HomeScreen from "./home-screen";
 import SignInForm from "./sign-in-form";
@@ -29,7 +30,7 @@ async function HomeContent() {
   const user = await getCurrentUser();
 
   if (user) {
-    const widgets = await listWidgets(user.groupId, user);
+    const widgets = isAdmin(user.role) ? await listAllWidgets() : await listWidgets(user.groupId, user);
     return <HomeScreen user={user} widgets={widgets} />;
   }
 

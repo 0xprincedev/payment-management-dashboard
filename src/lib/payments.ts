@@ -1,6 +1,7 @@
 import "server-only";
 import { io } from "next/cache";
 import type { SQLOutputValue } from "node:sqlite";
+import { isBoss } from "@/lib/access";
 import { db, type UserRole } from "@/lib/db";
 
 export { formatAmount } from "@/lib/amount";
@@ -20,6 +21,8 @@ export type WidgetSummary = {
 export type PaymentWidget = {
   id: number;
   name: string;
+  groupId: number;
+  groupName: string;
   paymentCount: number;
   summary: WidgetSummary | null;
 };
@@ -52,20 +55,22 @@ type Viewer = {
 };
 
 function seesEveryRecord(role: UserRole) {
-  return role === "Boss" ? 1 : 0;
+  return isBoss(role) ? 1 : 0;
 }
 
 export async function listWidgets(groupId: number, viewer: Viewer): Promise<PaymentWidget[]> {
   await io();
 
-  const summaries = viewer.role === "Boss" ? widgetSummary(groupId) : null;
+  const summaries = isBoss(viewer.role) ? widgetSummary(groupId) : null;
 
   return db
     .prepare(
-      `SELECT payment_widgets.id, payment_widgets.name, COUNT(payments.id) AS payment_count,
+      `SELECT payment_widgets.id, payment_widgets.name, payment_widgets.group_id, groups.name AS group_name,
+              COUNT(payments.id) AS payment_count,
               COALESCE(SUM(payments.amount_cents), 0) AS total_cents,
               COALESCE(SUM(CASE WHEN payments.kind = 'bank' THEN payments.amount_cents ELSE 0 END), 0) AS bank_cents
        FROM payment_widgets
+       JOIN groups ON groups.id = payment_widgets.group_id
        LEFT JOIN payments
          ON payments.widget_id = payment_widgets.id
         AND (? = 1 OR payments.user_id = ?)
@@ -77,6 +82,8 @@ export async function listWidgets(groupId: number, viewer: Viewer): Promise<Paym
     .map((row) => ({
       id: Number(row.id),
       name: String(row.name),
+      groupId: Number(row.group_id),
+      groupName: String(row.group_name),
       paymentCount: Number(row.payment_count),
       summary: summaries
         ? summaries.get(Number(row.id)) ?? emptySummary()
@@ -88,17 +95,41 @@ export async function listWidgets(groupId: number, viewer: Viewer): Promise<Paym
     }));
 }
 
+export async function listAllWidgets(): Promise<PaymentWidget[]> {
+  await io();
+  const summaries = widgetSummary(null);
+
+  return db
+    .prepare(
+      `SELECT payment_widgets.id, payment_widgets.name, payment_widgets.group_id, groups.name AS group_name
+       FROM payment_widgets
+       JOIN groups ON groups.id = payment_widgets.group_id
+       ORDER BY groups.sort_order, groups.id, payment_widgets.id DESC`,
+    )
+    .all()
+    .map((row) => ({
+      id: Number(row.id),
+      name: String(row.name),
+      groupId: Number(row.group_id),
+      groupName: String(row.group_name),
+      paymentCount: 0,
+      summary: summaries.get(Number(row.id)) ?? emptySummary(),
+    }));
+}
+
 function emptySummary(): WidgetSummary {
   return { totalCents: 0, bankCents: 0, internalByGroup: [] };
 }
 
-function widgetSummary(groupId: number) {
+function widgetSummary(groupId: number | null) {
   const summaries = new Map<number, WidgetSummary>();
   const remember = (widgetId: number) => {
     const current = summaries.get(widgetId) ?? emptySummary();
     summaries.set(widgetId, current);
     return current;
   };
+  const scoped = groupId == null ? "" : "AND payment_widgets.group_id = ?";
+  const params = groupId == null ? [] : [groupId];
 
   const totals = db
     .prepare(
@@ -107,12 +138,13 @@ function widgetSummary(groupId: number) {
               COALESCE(SUM(CASE WHEN payments.kind = 'bank' THEN payments.amount_cents ELSE 0 END), 0) AS bank_cents
        FROM payments
        JOIN users ON users.id = payments.user_id
-       WHERE users.group_id = ?
-         AND users.status = 'Approved'
-         AND payments.widget_id IN (SELECT id FROM payment_widgets WHERE group_id = ?)
+       JOIN payment_widgets ON payment_widgets.id = payments.widget_id
+       WHERE users.status = 'Approved'
+         AND users.group_id = payment_widgets.group_id
+         ${scoped}
        GROUP BY payments.widget_id`,
     )
-    .all(groupId, groupId);
+    .all(...params);
 
   for (const row of totals) {
     const summary = remember(Number(row.widget_id));
@@ -128,17 +160,19 @@ function widgetSummary(groupId: number) {
               SUM(payments.amount_cents) AS cents
        FROM payments
        JOIN users ON users.id = payments.user_id
+       JOIN payment_widgets ON payment_widgets.id = payments.widget_id
        LEFT JOIN users AS counterparty ON counterparty.id = payments.member_id
        LEFT JOIN groups AS counterparty_group ON counterparty_group.id = counterparty.group_id
        LEFT JOIN groups AS owner_group ON owner_group.id = users.group_id
        WHERE payments.kind = 'internal'
-         AND users.group_id = ?
          AND users.status = 'Approved'
-         AND payments.widget_id IN (SELECT id FROM payment_widgets WHERE group_id = ?)
+         AND users.group_id = payment_widgets.group_id
+         ${scoped}
        GROUP BY payments.widget_id, COALESCE(counterparty.group_id, users.group_id)
-       ORDER BY COALESCE(counterparty.group_id, users.group_id)`,
+       ORDER BY COALESCE(counterparty_group.sort_order, owner_group.sort_order, 1000000),
+                COALESCE(counterparty.group_id, users.group_id)`,
     )
-    .all(groupId, groupId);
+    .all(...params);
 
   for (const row of internal) {
     const groupIdValue = Number(row.group_id);
@@ -153,16 +187,29 @@ function widgetSummary(groupId: number) {
   return summaries;
 }
 
-export async function getWidget(id: number, groupId: number) {
+export async function getWidget(id: number, groupId: number | null) {
   await io();
 
   const row = db
-    .prepare("SELECT id, name FROM payment_widgets WHERE id = ? AND group_id = ?")
-    .get(id, groupId) as { id: number; name: string } | undefined;
+    .prepare(
+      `SELECT payment_widgets.id, payment_widgets.name, payment_widgets.group_id, groups.name AS group_name
+       FROM payment_widgets
+       JOIN groups ON groups.id = payment_widgets.group_id
+       WHERE payment_widgets.id = ?
+         AND (? IS NULL OR payment_widgets.group_id = ?)`,
+    )
+    .get(id, groupId, groupId) as
+    | { id: number; name: string; group_id: number; group_name: string }
+    | undefined;
 
   if (!row) return null;
 
-  return { id: Number(row.id), name: String(row.name) };
+  return {
+    id: Number(row.id),
+    name: String(row.name),
+    groupId: Number(row.group_id),
+    groupName: String(row.group_name),
+  };
 }
 
 export async function listMembers(): Promise<GroupMember[]> {
@@ -204,8 +251,7 @@ LEFT JOIN users AS counterparty ON counterparty.id = payments.member_id
 LEFT JOIN groups AS counterparty_group ON counterparty_group.id = counterparty.group_id
 LEFT JOIN groups AS owner_group ON owner_group.id = users.group_id`;
 
-const paymentOrder = `ORDER BY
-  CASE
+const paymentSort = `CASE
     WHEN payments.kind = 'bank' THEN 0
     WHEN COALESCE(counterparty.group_id, users.group_id) = ? THEN 1
     ELSE 2
@@ -213,11 +259,21 @@ const paymentOrder = `ORDER BY
   CASE
     WHEN payments.kind = 'internal'
      AND COALESCE(counterparty.group_id, users.group_id) != ?
-    THEN COALESCE(counterparty.group_id, users.group_id)
+    THEN COALESCE(counterparty_group.sort_order, owner_group.sort_order, 1000000)
+    ELSE 0
+  END,
+  CASE
+    WHEN payments.kind = 'internal' THEN COALESCE(counterparty.sort_order, 1000000)
+    ELSE 0
+  END,
+  CASE
+    WHEN payments.kind = 'internal' THEN COALESCE(counterparty.id, 0)
     ELSE 0
   END,
   payments.paid_on,
   payments.id`;
+
+const paymentOrder = `ORDER BY ${paymentSort}`;
 
 function toPayment(row: Record<string, SQLOutputValue>): PaymentRecord {
   return {
@@ -254,10 +310,9 @@ export async function listPayments(
 
 export async function listMemberPayments(
   widgetId: number,
-  viewer: Viewer & { groupId: number },
+  groupId: number,
 ): Promise<{ id: number; name: string; nickname: string; payments: PaymentRecord[] }[]> {
   await io();
-  if (viewer.role !== "Boss") return [];
 
   const members = db
     .prepare(
@@ -266,7 +321,7 @@ export async function listMemberPayments(
        WHERE group_id = ? AND status = 'Approved'
        ORDER BY sort_order, id`,
     )
-    .all(viewer.groupId)
+    .all(groupId)
     .map((row) => ({
       id: Number(row.id),
       name: String(row.name),
@@ -279,22 +334,9 @@ export async function listMemberPayments(
        WHERE payments.widget_id = ?
          AND users.group_id = ?
          AND users.status = 'Approved'
-       ORDER BY users.nickname COLLATE NOCASE,
-         CASE
-           WHEN payments.kind = 'bank' THEN 0
-           WHEN COALESCE(counterparty.group_id, users.group_id) = ? THEN 1
-           ELSE 2
-         END,
-         CASE
-           WHEN payments.kind = 'internal'
-            AND COALESCE(counterparty.group_id, users.group_id) != ?
-           THEN COALESCE(counterparty.group_id, users.group_id)
-           ELSE 0
-         END,
-         payments.paid_on,
-         payments.id`,
+       ORDER BY users.nickname COLLATE NOCASE, ${paymentSort}`,
     )
-    .all(widgetId, viewer.groupId, viewer.groupId, viewer.groupId);
+    .all(widgetId, groupId, groupId, groupId);
 
   const byUser = new Map<number, PaymentRecord[]>();
   for (const row of rows) {

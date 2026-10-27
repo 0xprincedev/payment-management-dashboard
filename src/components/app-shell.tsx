@@ -3,12 +3,14 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
 import AccountBoxOutlinedIcon from "@mui/icons-material/AccountBoxOutlined";
+import DomainOutlinedIcon from "@mui/icons-material/DomainOutlined";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import PersonOutlinedIcon from "@mui/icons-material/PersonOutlined";
 import type { SvgIconComponent } from "@mui/icons-material";
 import type { ReactNode } from "react";
 import { signOut } from "@/app/sign-in-actions";
+import { isAdmin, isBoss } from "@/lib/access";
 import BrandMark from "@/components/brand-mark";
 import ColorModeToggle from "@/components/color-mode-toggle";
 import type { CurrentUser } from "@/lib/session";
@@ -22,7 +24,7 @@ export default function AppShell({
   children,
 }: {
   user: CurrentUser;
-  current: "home" | "profile" | "payments" | "accounts" | "members";
+  current: "home" | "profile" | "payments" | "accounts" | "members" | "groups";
   children: ReactNode;
 }) {
   const initial = user.nickname.trim().charAt(0).toUpperCase() || "P";
@@ -60,9 +62,14 @@ export default function AppShell({
           <NavItem href="/accounts" current={current === "accounts"} icon={AccountBoxOutlinedIcon}>
             Accounts
           </NavItem>
-          {user.role === "Boss" ? (
+          {isBoss(user.role) || isAdmin(user.role) ? (
             <NavItem href="/members" current={current === "members"} icon={GroupsOutlinedIcon}>
               Members
+            </NavItem>
+          ) : null}
+          {isAdmin(user.role) ? (
+            <NavItem href="/groups" current={current === "groups"} icon={DomainOutlinedIcon}>
+              Groups
             </NavItem>
           ) : null}
         </Box>
