@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
+import { caseInsensitive, users } from "@/lib/db";
 import { hashPassword } from "@/lib/passwords";
 import { getCurrentUser } from "@/lib/session";
 
@@ -39,18 +39,15 @@ export async function updateOwnProfile(
     return { error: "Enter a valid email address." };
   }
 
-  const taken = db
-    .prepare(
-      `SELECT email, name, nickname
-       FROM users
-       WHERE id != ?
-         AND (
-           email = ? COLLATE NOCASE
-           OR name = ? COLLATE NOCASE
-           OR nickname = ? COLLATE NOCASE
-         )`,
+  const taken = await (await users())
+    .find(
+      {
+        _id: { $ne: user.id },
+        $or: [{ email }, { name }, { nickname }],
+      },
+      { collation: caseInsensitive },
     )
-    .all(user.id, email, name, nickname);
+    .toArray();
 
   for (const row of taken) {
     if (String(row.email).toLowerCase() === email) {
@@ -64,12 +61,7 @@ export async function updateOwnProfile(
     }
   }
 
-  db.prepare("UPDATE users SET name = ?, nickname = ?, email = ? WHERE id = ?").run(
-    name,
-    nickname,
-    email,
-    user.id,
-  );
+  await (await users()).updateOne({ _id: user.id }, { $set: { name, nickname, email } });
 
   return { message: "Profile updated.", name, nickname, email };
 }
@@ -87,7 +79,7 @@ export async function updateOwnPassword(
   if (password.length > 128) return { error: "Password must be 128 characters or fewer." };
   if (password !== confirmPassword) return { error: "Passwords do not match." };
 
-  db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashPassword(password), user.id);
+  await (await users()).updateOne({ _id: user.id }, { $set: { password: hashPassword(password) } });
 
   return { message: "Password updated." };
 }

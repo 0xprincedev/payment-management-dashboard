@@ -16,19 +16,18 @@ const paperFill = "FFFFFF";
 const columns = ["Name", "Project", "Account", "Date", "Amount", "Note"] as const;
 const accountColumns = [
   "Name",
+  "Platform",
   "Account",
   "Nationality",
   "Status",
-  "Hours",
-  "Jobs",
-  "Bids",
-  "Interviews",
-  "Work In Progress",
+  "Created At",
+  "Machine",
+  "Project",
+  "Available",
+  "Pending",
   "Note",
 ] as const;
-const accountWidths = [
-  12.85546875, 52.140625, 11.140625, 15, 7.42578125, 7.42578125, 7.42578125, 10.5703125, 61.42578125, 47,
-];
+const accountWidths = [14, 18, 36, 14, 14, 14, 16, 22, 14, 14, 40];
 const grid = { style: "thin" as const, color: { argb: "FF000000" } };
 const border = { top: grid, left: grid, bottom: grid, right: grid };
 const font = { name: "Calibri", size: 12, color: { theme: 1 } };
@@ -199,19 +198,21 @@ function writeAccounts(
     for (const account of accounts) {
       const values = [
         null,
+        cellText(account.platform),
         cellText(account.account),
         nationalityText(account.nationality),
         cellText(account.status),
-        cellText(account.hours),
-        cellText(account.jobs),
-        cellText(account.bids),
-        cellText(account.interview),
-        cellText(account.workInProgress),
+        account.createdAt ? excelDate(account.createdAt) : null,
+        cellText(account.machine),
+        cellText(account.project),
+        account.availableCents == null ? null : amountNumber(account.availableCents),
+        account.pendingCents == null ? null : amountNumber(account.pendingCents),
         cellText(account.note),
       ];
       values.forEach((value, index) => {
         const cell = sheet.getCell(rowNumber, index + 1);
         cell.value = value;
+        if (index === 5 && value instanceof Date) cell.numFmt = "mm/dd/yyyy";
         paint(cell);
       });
       sheet.getRow(rowNumber).height = 18.75;

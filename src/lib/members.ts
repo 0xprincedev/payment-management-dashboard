@@ -1,6 +1,6 @@
 import "server-only";
 import { io } from "next/cache";
-import { db, type UserRole, type UserStatus } from "@/lib/db";
+import { groups, users, type UserRole, type UserStatus } from "@/lib/db";
 
 export type GroupProfile = {
   id: number;
@@ -14,53 +14,46 @@ export type GroupProfile = {
 export async function listGroupsWithProfiles(): Promise<{ id: number; name: string; members: GroupProfile[] }[]> {
   await io();
 
-  const groups = db.prepare("SELECT id, name FROM groups ORDER BY sort_order, id").all();
-  const users = db
-    .prepare(
-      `SELECT id, name, nickname, email, role, status, group_id
-       FROM users
-       ORDER BY group_id, sort_order, id`,
-    )
-    .all();
+  const [groupDocs, userDocs] = await Promise.all([
+    groups().then((collection) => collection.find().sort({ sortOrder: 1, _id: 1 }).toArray()),
+    users().then((collection) => collection.find().toArray()),
+  ]);
+  const orderedUsers = [...userDocs].sort(
+    (left, right) => left.groupId - right.groupId || left.sortOrder - right.sortOrder || left._id - right._id,
+  );
   const byGroup = new Map<number, GroupProfile[]>();
-  for (const row of users) {
-    const groupId = Number(row.group_id);
-    const members = byGroup.get(groupId) ?? [];
+  for (const user of orderedUsers) {
+    const members = byGroup.get(user.groupId) ?? [];
     members.push({
-      id: Number(row.id),
-      name: String(row.name),
-      nickname: String(row.nickname),
-      email: String(row.email),
-      role: row.role as UserRole,
-      status: row.status as UserStatus,
+      id: user._id,
+      name: user.name,
+      nickname: user.nickname,
+      email: user.email,
+      role: user.role,
+      status: user.status,
     });
-    byGroup.set(groupId, members);
+    byGroup.set(user.groupId, members);
   }
 
-  return groups.map((row) => ({
-    id: Number(row.id),
-    name: String(row.name),
-    members: byGroup.get(Number(row.id)) ?? [],
+  return groupDocs.map((group) => ({
+    id: group._id,
+    name: group.name,
+    members: byGroup.get(group._id) ?? [],
   }));
 }
 
 export async function listGroupProfiles(groupId: number): Promise<GroupProfile[]> {
   await io();
 
-  return db
-    .prepare(
-      `SELECT id, name, nickname, email, role, status
-       FROM users
-       WHERE group_id = ?
-       ORDER BY sort_order, id`,
-    )
-    .all(groupId)
-    .map((row) => ({
-      id: Number(row.id),
-      name: String(row.name),
-      nickname: String(row.nickname),
-      email: String(row.email),
-      role: row.role as UserRole,
-      status: row.status as UserStatus,
-    }));
+  const rows = (await (await users()).find({ groupId }).toArray()).sort(
+    (left, right) => left.sortOrder - right.sortOrder || left._id - right._id,
+  );
+  return rows.map((user) => ({
+    id: user._id,
+    name: user.name,
+    nickname: user.nickname,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+  }));
 }

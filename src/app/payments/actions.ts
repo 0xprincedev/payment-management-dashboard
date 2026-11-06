@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { isAdmin, isBoss } from "@/lib/access";
-import { db } from "@/lib/db";
+import { caseInsensitive, groups, nextId, payments, users, widgets, type PaymentDoc } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 
 export type FormState = {
@@ -43,21 +43,22 @@ export async function createWidget(
   if (!name) return { error: "Enter a widget name." };
   if (name.length > 80) return { error: "Name must be 80 characters or fewer." };
 
-  const existing = db
-    .prepare(
-      "SELECT id FROM payment_widgets WHERE group_id = ? AND name = ? COLLATE NOCASE",
-    )
-    .get(user.groupId, name);
+  const existing = await (await widgets()).findOne(
+    { groupId: user.groupId, name },
+    { collation: caseInsensitive },
+  );
 
   if (existing) return { error: "A widget with this name already exists." };
 
-  const result = db
-    .prepare(
-      "INSERT INTO payment_widgets (group_id, name, created_by) VALUES (?, ?, ?)",
-    )
-    .run(user.groupId, name, user.id);
+  const id = await nextId("widgets");
+  await (await widgets()).insertOne({
+    _id: id,
+    groupId: user.groupId,
+    name,
+    createdBy: user.id,
+  });
 
-  redirect(`/payments/${Number(result.lastInsertRowid)}`);
+  redirect(`/payments/${id}`);
 }
 
 function widgetReturnPath(value: string, widgetId: number) {
@@ -65,12 +66,9 @@ function widgetReturnPath(value: string, widgetId: number) {
   return "/payments";
 }
 
-function loadGroupWidget(groupId: number, widgetId: number) {
+async function loadGroupWidget(groupId: number, widgetId: number) {
   if (!Number.isInteger(widgetId) || widgetId <= 0) return null;
-  const widget = db
-    .prepare("SELECT id, name FROM payment_widgets WHERE id = ? AND group_id = ?")
-    .get(widgetId, groupId) as { id: number; name: string } | undefined;
-  return widget ?? null;
+  return (await widgets()).findOne({ _id: widgetId, groupId });
 }
 
 export async function renameWidget(
@@ -82,27 +80,22 @@ export async function renameWidget(
   if (!isBoss(user.role)) return { error: "Only a boss can edit a payment widget." };
 
   const widgetId = Number(readText(formData, "widgetId"));
-  const widget = loadGroupWidget(user.groupId, widgetId);
+  const widget = await loadGroupWidget(user.groupId, widgetId);
   if (!widget) return { error: "That widget is not in your group." };
 
   const name = readText(formData, "name");
   if (!name) return { error: "Enter a widget name." };
   if (name.length > 80) return { error: "Name must be 80 characters or fewer." };
 
-  const existing = db
-    .prepare(
-      "SELECT id FROM payment_widgets WHERE group_id = ? AND name = ? COLLATE NOCASE AND id != ?",
-    )
-    .get(user.groupId, name, widget.id);
+  const existing = await (await widgets()).findOne(
+    { groupId: user.groupId, name, _id: { $ne: widget._id } },
+    { collation: caseInsensitive },
+  );
   if (existing) return { error: "A widget with this name already exists." };
 
-  db.prepare("UPDATE payment_widgets SET name = ? WHERE id = ? AND group_id = ?").run(
-    name,
-    widget.id,
-    user.groupId,
-  );
+  await (await widgets()).updateOne({ _id: widget._id, groupId: user.groupId }, { $set: { name } });
 
-  redirect(widgetReturnPath(readText(formData, "returnTo"), widget.id));
+  redirect(widgetReturnPath(readText(formData, "returnTo"), widget._id));
 }
 
 export async function deleteWidget(
@@ -114,20 +107,14 @@ export async function deleteWidget(
   if (!isBoss(user.role)) return { error: "Only a boss can delete a payment widget." };
 
   const widgetId = Number(readText(formData, "widgetId"));
-  const widget = loadGroupWidget(user.groupId, widgetId);
+  const widget = await loadGroupWidget(user.groupId, widgetId);
   if (!widget) return { error: "That widget is not in your group." };
 
-  db.exec("BEGIN IMMEDIATE");
   try {
-    db.prepare("DELETE FROM payments WHERE widget_id = ?").run(widget.id);
-    db.prepare("DELETE FROM payment_widgets WHERE id = ? AND group_id = ?").run(widget.id, user.groupId);
-    db.exec("COMMIT");
+    await (await payments()).deleteMany({ widgetId: widget._id });
+    const deleted = await (await widgets()).deleteOne({ _id: widget._id, groupId: user.groupId });
+    if (deleted.deletedCount !== 1) return { error: "That widget could not be deleted." };
   } catch {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // The transaction was already closed.
-    }
     return { error: "That widget could not be deleted." };
   }
 
@@ -171,22 +158,14 @@ function paymentFieldError(fields: {
   return null;
 }
 
-function loadEditablePayment(user: { id: number; role: string; groupId: number }, paymentId: number) {
+async function loadEditablePayment(user: { id: number; role: string; groupId: number }, paymentId: number) {
   if (!Number.isInteger(paymentId) || paymentId <= 0) return null;
 
-  const payment = db
-    .prepare(
-      `SELECT payments.id, payments.widget_id, payments.user_id, payments.kind
-       FROM payments
-       JOIN payment_widgets ON payment_widgets.id = payments.widget_id
-       WHERE payments.id = ? AND payment_widgets.group_id = ?`,
-    )
-    .get(paymentId, user.groupId) as
-    | { id: number; widget_id: number; user_id: number; kind: string }
-    | undefined;
-
+  const payment = await (await payments()).findOne({ _id: paymentId });
   if (!payment) return null;
-  if (isAdmin(user.role) || (!isBoss(user.role) && Number(payment.user_id) !== user.id)) return null;
+  const widget = await (await widgets()).findOne({ _id: payment.widgetId, groupId: user.groupId });
+  if (!widget) return null;
+  if (isAdmin(user.role) || (!isBoss(user.role) && payment.userId !== user.id)) return null;
   return payment;
 }
 
@@ -215,34 +194,44 @@ export async function addPayment(
     return { error: fieldError ?? "Enter a positive or negative amount, with up to 2 decimal places." };
   }
 
-  const widget = db
-    .prepare("SELECT id FROM payment_widgets WHERE id = ? AND group_id = ?")
-    .get(widgetId, user.groupId);
+  const widget = await (await widgets()).findOne({ _id: widgetId, groupId: user.groupId });
 
   if (!widget) return { error: "That widget is not in your group." };
 
   if (kind === "bank") {
-    db.prepare(
-      `INSERT INTO payments (
-         widget_id, user_id, kind, info, account, member_id, paid_on, amount_cents, note
-       ) VALUES (?, ?, 'bank', ?, ?, NULL, ?, ?, ?)`,
-    ).run(widgetId, user.id, info, account, paidOn, amount, note);
+    const document: PaymentDoc = {
+      _id: await nextId("payments"),
+      widgetId,
+      userId: user.id,
+      kind: "bank",
+      info,
+      account,
+      memberId: null,
+      paidOn,
+      amountCents: amount,
+      note,
+    };
+    await (await payments()).insertOne(document);
   } else {
     if (!Number.isInteger(memberId) || memberId <= 0) {
       return { error: "Select a member." };
     }
 
-    const member = db
-      .prepare("SELECT id FROM users WHERE id = ? AND status = 'Approved'")
-      .get(memberId);
-
+    const member = await (await users()).findOne({ _id: memberId, status: "Approved" });
     if (!member) return { error: "Select an approved member." };
 
-    db.prepare(
-      `INSERT INTO payments (
-         widget_id, user_id, kind, info, account, member_id, paid_on, amount_cents, note
-       ) VALUES (?, ?, 'internal', '', '', ?, ?, ?, '')`,
-    ).run(widgetId, user.id, memberId, paidOn, amount);
+    await (await payments()).insertOne({
+      _id: await nextId("payments"),
+      widgetId,
+      userId: user.id,
+      kind: "internal",
+      info: "",
+      account: "",
+      memberId,
+      paidOn,
+      amountCents: amount,
+      note: "",
+    });
   }
 
   redirect(`/payments/${widgetId}`);
@@ -255,7 +244,7 @@ export async function updatePayment(
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const payment = loadEditablePayment(user, Number(readText(formData, "paymentId")));
+  const payment = await loadEditablePayment(user, Number(readText(formData, "paymentId")));
   if (!payment) return { error: "That payment could not be found." };
 
   const amount = parseAmountCents(readText(formData, "amount"));
@@ -265,7 +254,7 @@ export async function updatePayment(
   const note = readText(formData, "note");
   const memberId = Number(readText(formData, "memberId"));
   const fieldError = paymentFieldError({
-    kind: String(payment.kind),
+    kind: payment.kind,
     amount,
     paidOn,
     info,
@@ -278,25 +267,21 @@ export async function updatePayment(
   }
 
   if (payment.kind === "bank") {
-    db.prepare(
-      `UPDATE payments
-       SET info = ?, account = ?, member_id = NULL, paid_on = ?, amount_cents = ?, note = ?
-       WHERE id = ?`,
-    ).run(info, account, paidOn, amount, note, payment.id);
+    await (await payments()).updateOne(
+      { _id: payment._id },
+      { $set: { info, account, memberId: null, paidOn, amountCents: amount, note } },
+    );
   } else {
-    const member = db
-      .prepare("SELECT id FROM users WHERE id = ? AND status = 'Approved'")
-      .get(memberId);
+    const member = await (await users()).findOne({ _id: memberId, status: "Approved" });
     if (!member) return { error: "Select an approved member." };
 
-    db.prepare(
-      `UPDATE payments
-       SET info = '', account = '', member_id = ?, paid_on = ?, amount_cents = ?, note = ''
-       WHERE id = ?`,
-    ).run(memberId, paidOn, amount, payment.id);
+    await (await payments()).updateOne(
+      { _id: payment._id },
+      { $set: { info: "", account: "", memberId, paidOn, amountCents: amount, note: "" } },
+    );
   }
 
-  redirect(`/payments/${Number(payment.widget_id)}`);
+  redirect(`/payments/${payment.widgetId}`);
 }
 
 export async function deletePayment(
@@ -306,11 +291,11 @@ export async function deletePayment(
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const payment = loadEditablePayment(user, Number(readText(formData, "paymentId")));
+  const payment = await loadEditablePayment(user, Number(readText(formData, "paymentId")));
   if (!payment) return { error: "That payment could not be found." };
 
-  db.prepare("DELETE FROM payments WHERE id = ?").run(payment.id);
-  redirect(`/payments/${Number(payment.widget_id)}`);
+  await (await payments()).deleteOne({ _id: payment._id });
+  redirect(`/payments/${payment.widgetId}`);
 }
 
 export type GroupTransaction = {
@@ -338,47 +323,51 @@ export async function loadGroupTransactions(
     return { error: "Only a boss or an admin can view another group's transactions." };
   }
 
-  const widget = db
-    .prepare("SELECT id, group_id FROM payment_widgets WHERE id = ? AND (? = 1 OR group_id = ?)")
-    .get(widgetId, isAdmin(user.role) ? 1 : 0, user.groupId) as { id: number; group_id: number } | undefined;
+  const widget = await (await widgets()).findOne({
+    _id: widgetId,
+    ...(isAdmin(user.role) ? {} : { groupId: user.groupId }),
+  });
   if (!widget) return { error: "That widget is not in your group." };
-  const ownerGroupId = Number(widget.group_id);
+  const ownerGroupId = widget.groupId;
   if (!Number.isInteger(groupId) || groupId <= 0) return { error: "That group could not be found." };
   if (groupId === ownerGroupId) return { error: "Your own group does not open here." };
 
-  const group = db
-    .prepare("SELECT name FROM groups WHERE id = ?")
-    .get(groupId) as { name: string } | undefined;
+  const group = await (await groups()).findOne({ _id: groupId });
   if (!group) return { error: "That group could not be found." };
 
-  const rows = db
-    .prepare(
-      `SELECT payments.id,
-              users.nickname AS member,
-              users.sort_order AS member_sort,
-              COALESCE(counterparty.nickname, '') AS note,
-              payments.paid_on,
-              payments.amount_cents
-       FROM payments
-       JOIN users ON users.id = payments.user_id
-       LEFT JOIN users AS counterparty ON counterparty.id = payments.member_id
-       WHERE payments.kind = 'internal'
-         AND payments.widget_id = ?
-         AND users.group_id = ?
-         AND users.status = 'Approved'
-         AND counterparty.group_id = ?
-       ORDER BY users.sort_order, users.id, payments.paid_on, payments.id`,
-    )
-    .all(widgetId, ownerGroupId, groupId);
+  const [ownerDocs, paymentDocs] = await Promise.all([
+    users().then((collection) => collection.find({ groupId: ownerGroupId, status: "Approved" }).toArray()),
+    payments().then((collection) => collection.find({ widgetId, kind: "internal" }).toArray()),
+  ]);
+  const owners = new Map(ownerDocs.map((owner) => [owner._id, owner]));
+  const counterparties = await (await users()).find({ groupId }).toArray();
+  const counterpartyById = new Map(counterparties.map((member) => [member._id, member]));
 
-  const transactions = rows.map((row) => ({
-    id: Number(row.id),
-    member: String(row.member),
-    memberSort: Number(row.member_sort),
-    paidOn: String(row.paid_on),
-    amountCents: Number(row.amount_cents),
-    note: String(row.note),
-  }));
+  const transactions = paymentDocs
+    .flatMap((payment) => {
+      const owner = owners.get(payment.userId);
+      const counterparty = payment.memberId == null ? undefined : counterpartyById.get(payment.memberId);
+      if (!owner || !counterparty || counterparty.groupId !== groupId) return [];
+      return [
+        {
+          id: payment._id,
+          member: owner.nickname,
+          memberSort: owner.sortOrder,
+          ownerId: owner._id,
+          paidOn: payment.paidOn,
+          amountCents: payment.amountCents,
+          note: counterparty.nickname,
+        },
+      ];
+    })
+    .sort(
+      (left, right) =>
+        left.memberSort - right.memberSort ||
+        left.ownerId - right.ownerId ||
+        left.paidOn.localeCompare(right.paidOn) ||
+        left.id - right.id,
+    )
+    .map(({ ownerId: _ownerId, ...row }) => row);
 
   return {
     groupName: String(group.name).trim() || `Group ${groupId}`,

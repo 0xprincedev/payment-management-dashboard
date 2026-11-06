@@ -1,41 +1,29 @@
 import "server-only";
 import { io } from "next/cache";
 import type { AccountRecord } from "@/lib/account-record";
-import { db } from "@/lib/db";
+import { accounts, groups, users, type AccountDoc } from "@/lib/db";
 
-function optionalText(value: unknown) {
-  if (value === null || value === undefined) return null;
-  const text = String(value).trim();
-  return text || null;
-}
-
-function toAccount(row: Record<string, unknown>): AccountRecord {
+function toAccount(row: AccountDoc): AccountRecord {
   return {
-    id: Number(row.id),
-    account: String(row.account),
-    nationality: String(row.nationality),
-    status: String(row.status),
-    hours: optionalText(row.hours),
-    jobs: optionalText(row.jobs),
-    bids: optionalText(row.bids),
-    interview: optionalText(row.interview),
-    workInProgress: optionalText(row.work_in_progress),
-    note: String(row.note),
+    id: row._id,
+    platform: row.platform,
+    account: row.account,
+    nationality: row.nationality,
+    status: row.status,
+    createdAt: row.createdAt,
+    machine: row.machine,
+    project: row.project,
+    availableCents: row.availableCents,
+    pendingCents: row.pendingCents,
+    note: row.note,
   };
 }
 
 export async function listAccounts(userId: number): Promise<AccountRecord[]> {
   await io();
 
-  return db
-    .prepare(
-      `SELECT id, account, nationality, status, hours, jobs, bids, interview, work_in_progress, note
-       FROM accounts
-       WHERE user_id = ?
-       ORDER BY sort_order, id`,
-    )
-    .all(userId)
-    .map((row) => toAccount(row));
+  const rows = await (await accounts()).find({ userId }).sort({ sortOrder: 1, _id: 1 }).toArray();
+  return rows.map(toAccount);
 }
 
 export type MemberAccounts = {
@@ -51,24 +39,15 @@ export async function listGroupMemberAccounts(
 ): Promise<MemberAccounts[]> {
   await io();
 
-  const members = db
-    .prepare(
-      `SELECT id, name, nickname
-       FROM users
-       WHERE group_id = ? AND status = 'Approved' AND id != ?
-       ORDER BY sort_order, id`,
-    )
-    .all(groupId, excludeUserId)
-    .map((row) => ({
-      id: Number(row.id),
-      name: String(row.name),
-      nickname: String(row.nickname),
-    }));
-
-  const grouped = await listAccountsByUsers(members.map((member) => member.id));
+  const members = (await (await users()).find({ groupId, status: "Approved", _id: { $ne: excludeUserId } }).toArray()).sort(
+    (left, right) => left.sortOrder - right.sortOrder || left._id - right._id,
+  );
+  const grouped = await listAccountsByUsers(members.map((member) => member._id));
   return members.map((member) => ({
-    ...member,
-    accounts: grouped.get(member.id) ?? [],
+    id: member._id,
+    name: member.name,
+    nickname: member.nickname,
+    accounts: grouped.get(member._id) ?? [],
   }));
 }
 
@@ -77,38 +56,27 @@ export async function listAllAccountsByGroup(): Promise<
 > {
   await io();
 
-  const groups = db.prepare("SELECT id, name FROM groups ORDER BY sort_order, id").all();
-  const members = db
-    .prepare(
-      `SELECT id, name, nickname, group_id
-       FROM users
-       WHERE status = 'Approved'
-       ORDER BY group_id, sort_order, id`,
-    )
-    .all()
-    .map((row) => ({
-      id: Number(row.id),
-      name: String(row.name),
-      nickname: String(row.nickname),
-      groupId: Number(row.group_id),
-    }));
+  const [groupDocs, memberDocs] = await Promise.all([
+    groups().then((collection) => collection.find().sort({ sortOrder: 1, _id: 1 }).toArray()),
+    users().then((collection) => collection.find({ status: "Approved" }).toArray()),
+  ]);
+  const members = [...memberDocs].sort(
+    (left, right) => left.groupId - right.groupId || left.sortOrder - right.sortOrder || left._id - right._id,
+  );
+  const grouped = await listAccountsByUsers(members.map((member) => member._id));
 
-  const grouped = await listAccountsByUsers(members.map((member) => member.id));
-  return groups.map((row) => {
-    const id = Number(row.id);
-    return {
-      id,
-      name: String(row.name),
-      members: members
-        .filter((member) => member.groupId === id)
-        .map((member) => ({
-          id: member.id,
-          name: member.name,
-          nickname: member.nickname,
-          accounts: grouped.get(member.id) ?? [],
-        })),
-    };
-  });
+  return groupDocs.map((group) => ({
+    id: group._id,
+    name: group.name,
+    members: members
+      .filter((member) => member.groupId === group._id)
+      .map((member) => ({
+        id: member._id,
+        name: member.name,
+        nickname: member.nickname,
+        accounts: grouped.get(member._id) ?? [],
+      })),
+  }));
 }
 
 export async function listAccountsByUsers(userIds: number[]): Promise<Map<number, AccountRecord[]>> {
@@ -116,21 +84,11 @@ export async function listAccountsByUsers(userIds: number[]): Promise<Map<number
   const grouped = new Map<number, AccountRecord[]>();
   if (userIds.length === 0) return grouped;
 
-  const placeholders = userIds.map(() => "?").join(", ");
-  const rows = db
-    .prepare(
-      `SELECT user_id, id, account, nationality, status, hours, jobs, bids, interview, work_in_progress, note
-       FROM accounts
-       WHERE user_id IN (${placeholders})
-       ORDER BY sort_order, id`,
-    )
-    .all(...userIds);
-
+  const rows = await (await accounts()).find({ userId: { $in: userIds } }).sort({ sortOrder: 1, _id: 1 }).toArray();
   for (const row of rows) {
-    const ownerId = Number(row.user_id);
-    const accounts = grouped.get(ownerId) ?? [];
-    accounts.push(toAccount(row));
-    grouped.set(ownerId, accounts);
+    const owned = grouped.get(row.userId) ?? [];
+    owned.push(toAccount(row));
+    grouped.set(row.userId, owned);
   }
 
   return grouped;

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/access";
 import type { AccountRecord } from "@/lib/account-record";
-import { db } from "@/lib/db";
+import { accounts, nextId, type AccountDoc } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 
 export type AccountActionState = {
@@ -31,41 +31,82 @@ function textError(value: string, label: string, max: number) {
   return null;
 }
 
-function optionalText(value: string, label: string, max: number): string | null | { error: string } {
+function optionalCents(value: string, label: string): number | null | { error: string } {
   if (!value) return null;
-  const error = textError(value, label, max);
-  if (error) return { error };
+  const normalized = value.replace(/[$,]/g, "").trim();
+  if (!/^-?\d+(\.\d{1,2})?$/.test(normalized)) {
+    return { error: `Enter ${label} as a number with up to 2 decimal places.` };
+  }
+
+  const negative = normalized.startsWith("-");
+  const [whole, fraction = ""] = normalized.slice(negative ? 1 : 0).split(".");
+  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  const signed = negative ? -cents : cents;
+  if (!Number.isSafeInteger(signed) || Math.abs(signed) > 100_000_000) {
+    return { error: `Enter ${label} as a number with up to 2 decimal places.` };
+  }
+
+  return signed;
+}
+
+function optionalDate(value: string): string | null | { error: string } {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return { error: "Enter a valid created date." };
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return { error: "Enter a valid created date." };
+  }
   return value;
 }
 
 function readFields(formData: FormData): AccountFields | { error: string } {
+  const platform = readText(formData, "platform");
   const account = readText(formData, "account");
   const nationality = readText(formData, "nationality");
   const status = readText(formData, "status");
+  const machine = readText(formData, "machine");
+  const project = readText(formData, "project");
   const note = readText(formData, "note");
 
   if (!account) return { error: "Enter the account." };
   const accountError = textError(account, "Account", 120);
   if (accountError) return { error: accountError };
+  const platformError = textError(platform, "Platform", 80);
+  if (platformError) return { error: platformError };
   const nationalityError = textError(nationality, "Nationality", 80);
   if (nationalityError) return { error: nationalityError };
   const statusError = textError(status, "Status", 80);
   if (statusError) return { error: statusError };
+  const machineError = textError(machine, "Machine", 80);
+  if (machineError) return { error: machineError };
+  const projectError = textError(project, "Project", 80);
+  if (projectError) return { error: projectError };
   const noteError = textError(note, "Note", 500);
   if (noteError) return { error: noteError };
 
-  const hours = optionalText(readText(formData, "hours"), "Hours", 80);
-  if (hours && typeof hours === "object") return hours;
-  const jobs = optionalText(readText(formData, "jobs"), "Jobs", 80);
-  if (jobs && typeof jobs === "object") return jobs;
-  const bids = optionalText(readText(formData, "bids"), "Bids", 80);
-  if (bids && typeof bids === "object") return bids;
-  const interview = optionalText(readText(formData, "interview"), "Interview", 80);
-  if (interview && typeof interview === "object") return interview;
-  const workInProgress = optionalText(readText(formData, "workInProgress"), "Work in progress", 80);
-  if (workInProgress && typeof workInProgress === "object") return workInProgress;
+  const createdAt = optionalDate(readText(formData, "createdAt"));
+  if (createdAt && typeof createdAt === "object") return createdAt;
+  const availableCents = optionalCents(readText(formData, "available"), "Available");
+  if (availableCents && typeof availableCents === "object") return availableCents;
+  const pendingCents = optionalCents(readText(formData, "pending"), "Pending");
+  if (pendingCents && typeof pendingCents === "object") return pendingCents;
 
-  return { account, nationality, status, hours, jobs, bids, interview, workInProgress, note };
+  return {
+    platform,
+    account,
+    nationality,
+    status,
+    createdAt,
+    machine,
+    project,
+    availableCents,
+    pendingCents,
+    note,
+  };
 }
 
 function accountId(formData: FormData) {
@@ -83,31 +124,26 @@ export async function createAccount(
   const fields = readFields(formData);
   if ("error" in fields) return { error: fields.error };
 
-  const result = db
-    .prepare(
-      `INSERT INTO accounts (
-         user_id, sort_order, account, nationality, status, hours, jobs, bids, interview, work_in_progress, note
-       ) VALUES (
-         ?,
-         COALESCE((SELECT MAX(sort_order) + 1 FROM accounts WHERE user_id = ?), 0),
-         ?, ?, ?, ?, ?, ?, ?, ?, ?
-       )`,
-    )
-    .run(
-      user.id,
-      user.id,
-      fields.account,
-      fields.nationality,
-      fields.status,
-      fields.hours,
-      fields.jobs,
-      fields.bids,
-      fields.interview,
-      fields.workInProgress,
-      fields.note,
-    );
+  const latest = await (await accounts()).find({ userId: user.id }).sort({ sortOrder: -1 }).limit(1).next();
+  const id = await nextId("accounts");
+  const document: AccountDoc = {
+    _id: id,
+    userId: user.id,
+    sortOrder: (latest?.sortOrder ?? -1) + 1,
+    platform: fields.platform,
+    account: fields.account,
+    nationality: fields.nationality,
+    status: fields.status,
+    createdAt: fields.createdAt,
+    machine: fields.machine,
+    project: fields.project,
+    availableCents: fields.availableCents,
+    pendingCents: fields.pendingCents,
+    note: fields.note,
+  };
+  await (await accounts()).insertOne(document);
 
-  return { account: { id: Number(result.lastInsertRowid), ...fields } };
+  return { account: { id, ...fields } };
 }
 
 export async function reorderAccounts(orderedIds: number[]): Promise<AccountActionState> {
@@ -117,10 +153,9 @@ export async function reorderAccounts(orderedIds: number[]): Promise<AccountActi
     return { error: "The account order could not be saved." };
   }
 
-  const existing = db
-    .prepare("SELECT id FROM accounts WHERE user_id = ?")
-    .all(user.id)
-    .map((row) => Number(row.id));
+  const existing = (await (await accounts()).find({ userId: user.id }, { projection: { _id: 1 } }).toArray()).map(
+    (row) => row._id,
+  );
   const unique = new Set(orderedIds);
   if (
     unique.size !== orderedIds.length ||
@@ -130,17 +165,16 @@ export async function reorderAccounts(orderedIds: number[]): Promise<AccountActi
     return { error: "The account order could not be saved." };
   }
 
-  db.exec("BEGIN IMMEDIATE");
   try {
-    const update = db.prepare("UPDATE accounts SET sort_order = ? WHERE id = ? AND user_id = ?");
-    orderedIds.forEach((id, index) => update.run(index, id, user.id));
-    db.exec("COMMIT");
+    await (await accounts()).bulkWrite(
+      orderedIds.map((id, index) => ({
+        updateOne: {
+          filter: { _id: id, userId: user.id },
+          update: { $set: { sortOrder: index } },
+        },
+      })),
+    );
   } catch {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // The transaction was already closed.
-    }
     return { error: "The account order could not be saved." };
   }
 
@@ -158,28 +192,25 @@ export async function updateAccount(
   const fields = readFields(formData);
   if ("error" in fields) return { error: fields.error };
 
-  const result = db
-    .prepare(
-      `UPDATE accounts
-       SET account = ?, nationality = ?, status = ?, hours = ?, jobs = ?, bids = ?,
-           interview = ?, work_in_progress = ?, note = ?
-       WHERE id = ? AND user_id = ?`,
-    )
-    .run(
-      fields.account,
-      fields.nationality,
-      fields.status,
-      fields.hours,
-      fields.jobs,
-      fields.bids,
-      fields.interview,
-      fields.workInProgress,
-      fields.note,
-      id,
-      user.id,
-    );
+  const result = await (await accounts()).updateOne(
+    { _id: id, userId: user.id },
+    {
+      $set: {
+        platform: fields.platform,
+        account: fields.account,
+        nationality: fields.nationality,
+        status: fields.status,
+        createdAt: fields.createdAt,
+        machine: fields.machine,
+        project: fields.project,
+        availableCents: fields.availableCents,
+        pendingCents: fields.pendingCents,
+        note: fields.note,
+      },
+    },
+  );
 
-  if (result.changes !== 1) return { error: "That account is not yours." };
+  if (result.matchedCount !== 1) return { error: "That account is not yours." };
   return { account: { id, ...fields } };
 }
 
@@ -192,7 +223,7 @@ export async function deleteAccount(
   const id = accountId(formData);
   if (!id) return { error: "That account is not yours." };
 
-  const result = db.prepare("DELETE FROM accounts WHERE id = ? AND user_id = ?").run(id, user.id);
-  if (result.changes !== 1) return { error: "That account is not yours." };
+  const result = await (await accounts()).deleteOne({ _id: id, userId: user.id });
+  if (result.deletedCount !== 1) return { error: "That account is not yours." };
   return { deletedId: id };
 }

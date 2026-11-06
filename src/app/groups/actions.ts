@@ -2,8 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { isAdmin, isAdminGroupName } from "@/lib/access";
-import { db } from "@/lib/db";
+import { caseInsensitive, groups, nextId, users, widgets, withTransaction } from "@/lib/db";
 import { getCurrentUser, type CurrentUser } from "@/lib/session";
+import type { ClientSession } from "mongodb";
 
 export type GroupRecord = {
   id: number;
@@ -37,22 +38,28 @@ function groupNameError(name: string) {
   return null;
 }
 
-function nameTaken(name: string, exceptId?: number) {
-  const row = exceptId
-    ? db.prepare("SELECT id FROM groups WHERE name = ? COLLATE NOCASE AND id != ?").get(name, exceptId)
-    : db.prepare("SELECT id FROM groups WHERE name = ? COLLATE NOCASE").get(name);
+async function nameTaken(name: string, exceptId?: number) {
+  const row = await (await groups()).findOne(
+    { name, ...(exceptId ? { _id: { $ne: exceptId } } : {}) },
+    { collation: caseInsensitive },
+  );
   return Boolean(row);
 }
 
-function syncGroupRoles(groupId: number, previousName: string, nextName: string) {
+async function syncGroupRoles(
+  groupId: number,
+  previousName: string,
+  nextName: string,
+  session: ClientSession,
+) {
   const wasAdmin = isAdminGroupName(previousName);
   const nowAdmin = isAdminGroupName(nextName);
   if (!wasAdmin && nowAdmin) {
-    db.prepare("UPDATE users SET role = 'Admin' WHERE group_id = ?").run(groupId);
+    await (await users()).updateMany({ groupId }, { $set: { role: "Admin" } }, { session });
     return "Group name updated. Everyone in this group is now an admin.";
   }
   if (wasAdmin && !nowAdmin) {
-    db.prepare("UPDATE users SET role = 'Member' WHERE group_id = ? AND role = 'Admin'").run(groupId);
+    await (await users()).updateMany({ groupId, role: "Admin" }, { $set: { role: "Member" } }, { session });
     return "Group name updated. Admins in this group are now members.";
   }
   return "Group name updated.";
@@ -68,19 +75,20 @@ export async function createGroup(
   const name = readText(formData, "name");
   const invalid = groupNameError(name);
   if (invalid) return { error: invalid };
-  if (nameTaken(name)) return { error: "A group with this name already exists." };
+  if (await nameTaken(name)) return { error: "A group with this name already exists." };
 
-  const inserted = db
-    .prepare(
-      `INSERT INTO groups (name, sort_order)
-       VALUES (?, COALESCE((SELECT MAX(sort_order) + 1 FROM groups), 0))`,
-    )
-    .run(name);
+  const latest = await (await groups()).find().sort({ sortOrder: -1 }).limit(1).next();
+  const id = await nextId("groups");
+  await (await groups()).insertOne({
+    _id: id,
+    name,
+    sortOrder: (latest?.sortOrder ?? -1) + 1,
+  });
 
   return {
     message: "Group created.",
     group: {
-      id: Number(inserted.lastInsertRowid),
+      id,
       name,
       memberCount: 0,
       widgetCount: 0,
@@ -101,24 +109,17 @@ export async function renameGroup(
   if (invalid) return { error: invalid };
   if (!Number.isInteger(groupId) || groupId <= 0) return { error: "That group could not be found." };
 
-  const current = db.prepare("SELECT id, name FROM groups WHERE id = ?").get(groupId) as
-    | { id: number; name: string }
-    | undefined;
+  const current = await (await groups()).findOne({ _id: groupId });
   if (!current) return { error: "That group could not be found." };
-  if (nameTaken(name, groupId)) return { error: "A group with this name already exists." };
+  if (await nameTaken(name, groupId)) return { error: "A group with this name already exists." };
 
-  db.exec("BEGIN IMMEDIATE");
   try {
-    db.prepare("UPDATE groups SET name = ? WHERE id = ?").run(name, groupId);
-    const message = syncGroupRoles(groupId, String(current.name), name);
-    db.exec("COMMIT");
+    const message = await withTransaction(async (session) => {
+      await (await groups()).updateOne({ _id: groupId }, { $set: { name } }, { session });
+      return syncGroupRoles(groupId, current.name, name, session);
+    });
     return { message, name };
   } catch {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // The transaction was already closed.
-    }
     return { error: "That group name could not be saved." };
   }
 }
@@ -133,37 +134,19 @@ export async function deleteGroup(
   const groupId = Number(readText(formData, "groupId"));
   if (!Number.isInteger(groupId) || groupId <= 0) return { error: "That group could not be found." };
 
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const current = db.prepare("SELECT id FROM groups WHERE id = ?").get(groupId);
-    if (!current) {
-      db.exec("ROLLBACK");
-      return { error: "That group could not be found." };
-    }
+  const current = await (await groups()).findOne({ _id: groupId });
+  if (!current) return { error: "That group could not be found." };
 
-    const used = db
-      .prepare(
-        `SELECT
-           (SELECT COUNT(*) FROM users WHERE group_id = ?) AS members,
-           (SELECT COUNT(*) FROM payment_widgets WHERE group_id = ?) AS widgets`,
-      )
-      .get(groupId, groupId) as { members: number; widgets: number };
-
-    if (Number(used.members) > 0 || Number(used.widgets) > 0) {
-      db.exec("ROLLBACK");
-      return { error: "This group still has members or payment widgets, so it can't be deleted." };
-    }
-
-    db.prepare("DELETE FROM groups WHERE id = ?").run(groupId);
-    db.exec("COMMIT");
-  } catch {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // The transaction was already closed.
-    }
-    return { error: "That group could not be deleted." };
+  const [members, widgetCount] = await Promise.all([
+    users().then((collection) => collection.countDocuments({ groupId })),
+    widgets().then((collection) => collection.countDocuments({ groupId })),
+  ]);
+  if (members > 0 || widgetCount > 0) {
+    return { error: "This group still has members or payment widgets, so it can't be deleted." };
   }
+
+  const deleted = await (await groups()).deleteOne({ _id: groupId });
+  if (deleted.deletedCount !== 1) return { error: "That group could not be deleted." };
 
   return { message: "Group deleted." };
 }
@@ -175,26 +158,19 @@ export async function reorderGroups(orderedIds: number[]): Promise<GroupActionSt
     return { error: "The group order could not be saved." };
   }
 
-  const existing = db
-    .prepare("SELECT id FROM groups")
-    .all()
-    .map((row) => Number(row.id));
+  const existing = (await (await groups()).find({}, { projection: { _id: 1 } }).toArray()).map((row) => row._id);
   const unique = new Set(orderedIds);
   if (unique.size !== orderedIds.length || unique.size !== existing.length || existing.some((id) => !unique.has(id))) {
     return { error: "The group order could not be saved." };
   }
 
-  db.exec("BEGIN IMMEDIATE");
   try {
-    const assign = db.prepare("UPDATE groups SET sort_order = ? WHERE id = ?");
-    orderedIds.forEach((id, index) => assign.run(index, id));
-    db.exec("COMMIT");
+    await (await groups()).bulkWrite(
+      orderedIds.map((id, index) => ({
+        updateOne: { filter: { _id: id }, update: { $set: { sortOrder: index } } },
+      })),
+    );
   } catch {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // The transaction was already closed.
-    }
     return { error: "The group order could not be saved." };
   }
 

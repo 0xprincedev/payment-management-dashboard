@@ -22,24 +22,38 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { MemberActionSlot } from "@/components/member-views";
 import type { AccountRecord } from "@/lib/account-record";
+import { formatAmount, formatAmountInput } from "@/lib/amount";
 import { nationalities } from "@/lib/nationalities";
 import { submitFormOnEnter } from "@/lib/submit-on-enter";
 import { createAccount, deleteAccount, reorderAccounts, updateAccount, type AccountActionState } from "./actions";
 
 const columns = [
-  "No",
+  "Name",
+  "Platform",
   "Account",
   "Nationality",
   "Status",
-  "Hours",
-  "Jobs",
-  "Bids",
-  "Interview",
-  "Work in progress",
+  "Created At",
+  "Machine",
+  "Project",
+  "Available",
+  "Pending",
   "Note",
 ] as const;
 
 const initialState: AccountActionState = {};
+
+function formatCreatedAt(iso: string | null) {
+  if (!iso) return "";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  return `${match[2]}/${match[3]}/${match[1]}`;
+}
+
+function formatCents(cents: number | null) {
+  if (cents === null) return "";
+  return formatAmount(cents);
+}
 
 function moveRow(rows: AccountRecord[], from: number, to: number) {
   const updated = [...rows];
@@ -58,10 +72,12 @@ function rowIndexAt(body: HTMLTableSectionElement, clientY: number) {
 }
 
 export default function AccountsTable({
+  name,
   accounts,
   readOnly = false,
   relocateAddButton = false,
 }: {
+  name: string;
   accounts: AccountRecord[];
   readOnly?: boolean;
   relocateAddButton?: boolean;
@@ -201,7 +217,7 @@ export default function AccountsTable({
           </Typography>
         ) : (
         <TableContainer>
-          <Table size="small" sx={{ minWidth: 1240, userSelect: draggingId === null ? "auto" : "none" }}>
+          <Table size="small" sx={{ minWidth: 1560, userSelect: draggingId === null ? "auto" : "none" }}>
             <TableHead>
               <TableRow>
                 {columns.map((column) => (
@@ -243,15 +259,20 @@ export default function AccountsTable({
                       "& .MuiButton-root": { cursor: "pointer" },
                     }}
                   >
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>{index + 1}</TableCell>
+                    <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{name}</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>{row.platform}</TableCell>
                     <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{row.account}</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>{row.nationality}</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>{row.status}</TableCell>
-                    <TableCell>{row.hours}</TableCell>
-                    <TableCell>{row.jobs}</TableCell>
-                    <TableCell>{row.bids}</TableCell>
-                    <TableCell>{row.interview}</TableCell>
-                    <TableCell>{row.workInProgress}</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>{formatCreatedAt(row.createdAt)}</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>{row.machine}</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>{row.project}</TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                      {formatCents(row.availableCents)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                      {formatCents(row.pendingCents)}
+                    </TableCell>
                     <TableCell sx={{ minWidth: 180 }}>{row.note}</TableCell>
                     {readOnly ? null : (
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
@@ -276,7 +297,7 @@ export default function AccountsTable({
         </TableContainer>
         )}
       </Paper>
-      <Dialog open={adding} onClose={() => setAdding(false)} fullWidth maxWidth="sm">
+      <Dialog open={adding} onClose={() => setAdding(false)} fullWidth maxWidth="md">
         {adding ? (
           <AccountForm
             title="Add account"
@@ -293,7 +314,7 @@ export default function AccountsTable({
           />
         ) : null}
       </Dialog>
-      <Dialog open={editing !== null} onClose={() => setEditing(null)} fullWidth maxWidth="sm">
+      <Dialog open={editing !== null} onClose={() => setEditing(null)} fullWidth maxWidth="md">
         {editing ? (
           <AccountForm
             title="Edit account"
@@ -345,14 +366,19 @@ function AccountForm({
   onSaved: (account: AccountRecord) => void;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
+  const [platform, setPlatform] = useState(account?.platform ?? "");
   const [accountName, setAccountName] = useState(account?.account ?? "");
   const [nationality, setNationality] = useState(account?.nationality ?? "");
   const [status, setStatus] = useState(account?.status ?? "");
-  const [hours, setHours] = useState(account?.hours ?? "");
-  const [jobs, setJobs] = useState(account?.jobs ?? "");
-  const [bids, setBids] = useState(account?.bids ?? "");
-  const [interview, setInterview] = useState(account?.interview ?? "");
-  const [workInProgress, setWorkInProgress] = useState(account?.workInProgress ?? "");
+  const [createdAt, setCreatedAt] = useState(account?.createdAt ?? "");
+  const [machine, setMachine] = useState(account?.machine ?? "");
+  const [project, setProject] = useState(account?.project ?? "");
+  const [available, setAvailable] = useState(
+    account?.availableCents == null ? "" : formatAmountInput(account.availableCents),
+  );
+  const [pendingAmount, setPendingAmount] = useState(
+    account?.pendingCents == null ? "" : formatAmountInput(account.pendingCents),
+  );
   const [note, setNote] = useState(account?.note ?? "");
   const reported = useRef(state);
 
@@ -365,14 +391,13 @@ function AccountForm({
   return (
     <form action={formAction} noValidate onKeyDown={submitFormOnEnter}>
       <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
+      <DialogContent sx={{ "&&": { overflow: "visible", paddingTop: "16px" } }}>
         {account ? <input type="hidden" name="id" value={account.id} /> : null}
         <Box
           sx={{
             display: "grid",
             gap: 2,
             gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-            pt: 1,
           }}
         >
           {state.error ? (
@@ -381,14 +406,20 @@ function AccountForm({
             </Alert>
           ) : null}
           <TextField
+            name="platform"
+            label="Platform"
+            value={platform}
+            onChange={(event) => setPlatform(event.target.value)}
+            autoFocus
+            fullWidth
+          />
+          <TextField
             name="account"
             label="Account"
             value={accountName}
             onChange={(event) => setAccountName(event.target.value)}
             required
-            autoFocus
             fullWidth
-            sx={{ gridColumn: "1 / -1" }}
           />
           <input type="hidden" name="nationality" value={nationality} />
           <Autocomplete
@@ -409,32 +440,42 @@ function AccountForm({
             onChange={(event) => setStatus(event.target.value)}
             fullWidth
           />
-          <Box
-            sx={{
-              display: "grid",
-              gap: 2,
-              gridColumn: "1 / -1",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            }}
-          >
-            <TextField name="hours" label="Hours" value={hours} onChange={(event) => setHours(event.target.value)} fullWidth />
-            <TextField name="jobs" label="Jobs" value={jobs} onChange={(event) => setJobs(event.target.value)} fullWidth />
-            <TextField name="bids" label="Bids" value={bids} onChange={(event) => setBids(event.target.value)} fullWidth />
-            <TextField
-              name="interview"
-              label="Interview"
-              value={interview}
-              onChange={(event) => setInterview(event.target.value)}
-              fullWidth
-            />
-          </Box>
           <TextField
-            name="workInProgress"
-            label="Work in progress"
-            value={workInProgress}
-            onChange={(event) => setWorkInProgress(event.target.value)}
+            name="createdAt"
+            type="date"
+            label="Created At"
+            value={createdAt}
+            onChange={(event) => setCreatedAt(event.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
             fullWidth
-            sx={{ gridColumn: "1 / -1" }}
+          />
+          <TextField
+            name="machine"
+            label="Machine"
+            value={machine}
+            onChange={(event) => setMachine(event.target.value)}
+            fullWidth
+          />
+          <TextField
+            name="project"
+            label="Project"
+            value={project}
+            onChange={(event) => setProject(event.target.value)}
+            fullWidth
+          />
+          <TextField
+            name="available"
+            label="Available"
+            value={available}
+            onChange={(event) => setAvailable(event.target.value)}
+            fullWidth
+          />
+          <TextField
+            name="pending"
+            label="Pending"
+            value={pendingAmount}
+            onChange={(event) => setPendingAmount(event.target.value)}
+            fullWidth
           />
           <TextField
             name="note"

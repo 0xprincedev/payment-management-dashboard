@@ -1,6 +1,6 @@
 import "server-only";
 import { io } from "next/cache";
-import { db } from "@/lib/db";
+import { groups, users, widgets } from "@/lib/db";
 
 export type ManagedGroup = {
   id: number;
@@ -12,19 +12,20 @@ export type ManagedGroup = {
 export async function listManagedGroups(): Promise<ManagedGroup[]> {
   await io();
 
-  return db
-    .prepare(
-      `SELECT groups.id, groups.name,
-              (SELECT COUNT(*) FROM users WHERE users.group_id = groups.id) AS member_count,
-              (SELECT COUNT(*) FROM payment_widgets WHERE payment_widgets.group_id = groups.id) AS widget_count
-       FROM groups
-       ORDER BY groups.sort_order, groups.id`,
-    )
-    .all()
-    .map((row) => ({
-      id: Number(row.id),
-      name: String(row.name),
-      memberCount: Number(row.member_count),
-      widgetCount: Number(row.widget_count),
-    }));
+  const [groupDocs, userDocs, widgetDocs] = await Promise.all([
+    groups().then((collection) => collection.find().sort({ sortOrder: 1, _id: 1 }).toArray()),
+    users().then((collection) => collection.find({}, { projection: { groupId: 1 } }).toArray()),
+    widgets().then((collection) => collection.find({}, { projection: { groupId: 1 } }).toArray()),
+  ]);
+  const members = new Map<number, number>();
+  const widgetCounts = new Map<number, number>();
+  for (const user of userDocs) members.set(user.groupId, (members.get(user.groupId) ?? 0) + 1);
+  for (const widget of widgetDocs) widgetCounts.set(widget.groupId, (widgetCounts.get(widget.groupId) ?? 0) + 1);
+
+  return groupDocs.map((group) => ({
+    id: group._id,
+    name: group.name,
+    memberCount: members.get(group._id) ?? 0,
+    widgetCount: widgetCounts.get(group._id) ?? 0,
+  }));
 }

@@ -52,7 +52,7 @@ async function AccountsContent() {
                   <Typography variant="h6" component="h3" sx={{ fontWeight: 700 }}>
                     {member.nickname}
                   </Typography>
-                  <AccountsTable accounts={member.accounts} readOnly />
+                  <AccountsTable name={member.name} accounts={member.accounts} readOnly />
                 </Box>
               ))
             )}
@@ -80,17 +80,17 @@ async function AccountsContent() {
             {
               id: user.id,
               nickname: user.nickname,
-              table: <AccountsTable accounts={accounts} relocateAddButton />,
+              table: <AccountsTable name={user.name} accounts={accounts} relocateAddButton />,
             },
             ...memberAccounts.map((member) => ({
               id: member.id,
               nickname: member.nickname,
-              table: <AccountsTable accounts={member.accounts} readOnly />,
+              table: <AccountsTable name={member.name} accounts={member.accounts} readOnly />,
             })),
           ]}
         />
       ) : (
-        <AccountsTable accounts={accounts} />
+        <AccountsTable name={user.name} accounts={accounts} />
       )}
     </AppShell>
   );

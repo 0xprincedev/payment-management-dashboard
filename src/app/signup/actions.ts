@@ -1,8 +1,9 @@
 "use server";
 
 import { isAdminGroupName } from "@/lib/access";
-import { db } from "@/lib/db";
+import { caseInsensitive, groups, nextId, users } from "@/lib/db";
 import { hashPassword } from "@/lib/passwords";
+import { MongoServerError } from "mongodb";
 
 export type SignupField =
   | "name"
@@ -82,71 +83,57 @@ export async function signup(
     return { fieldErrors };
   }
 
-  db.exec("BEGIN IMMEDIATE");
-
   try {
-    const taken = db
-      .prepare(
-        `SELECT email, name, nickname
-         FROM users
-         WHERE email = ? COLLATE NOCASE
-            OR name = ? COLLATE NOCASE
-            OR nickname = ? COLLATE NOCASE`,
-      )
-      .all(email, name, nickname);
+    const taken = await (await users())
+      .find({ $or: [{ email }, { name }, { nickname }] }, { collation: caseInsensitive })
+      .toArray();
 
     for (const row of taken) {
-      if (String(row.email).toLowerCase() === email) {
+      if (row.email.toLowerCase() === email) {
         fieldErrors.email = "An account with this email already exists.";
       }
-      if (String(row.name).toLowerCase() === name.toLowerCase()) {
+      if (row.name.toLowerCase() === name.toLowerCase()) {
         fieldErrors.name = "This name is already taken.";
       }
-      if (String(row.nickname).toLowerCase() === nickname.toLowerCase()) {
+      if (row.nickname.toLowerCase() === nickname.toLowerCase()) {
         fieldErrors.nickname = "This nickname is already taken.";
       }
     }
 
-    const group = db.prepare("SELECT id, name FROM groups WHERE id = ?").get(groupId) as
-      | { id: number; name: string }
-      | undefined;
+    const group = await (await groups()).findOne({ _id: groupId });
     if (!group) {
       fieldErrors.groupId = "Select a group.";
     }
 
     if (hasErrors(fieldErrors) || !group) {
-      db.exec("ROLLBACK");
       return { fieldErrors };
     }
 
-    const role = isAdminGroupName(String(group.name)) ? "Admin" : "Member";
-    db.prepare(
-      `INSERT INTO users (email, password, name, nickname, group_id, role, status, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, 'Pending', COALESCE((SELECT MAX(sort_order) + 1 FROM users WHERE group_id = ?), 0))`,
-    ).run(email, hashPassword(password), name, nickname, groupId, role, groupId);
+    const role = isAdminGroupName(group.name) ? "Admin" : "Member";
+    const latest = await (await users()).find({ groupId }).sort({ sortOrder: -1 }).limit(1).next();
+    await (await users()).insertOne({
+      _id: await nextId("users"),
+      email,
+      password: hashPassword(password),
+      name,
+      nickname,
+      groupId,
+      role,
+      status: "Pending",
+      sortOrder: (latest?.sortOrder ?? -1) + 1,
+    });
 
-    db.exec("COMMIT");
     return { success: true };
   } catch (error) {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // The transaction was already closed.
-    }
-
-    const message = error instanceof Error ? error.message : "";
-    if (message.includes("users.email")) {
-      return {
-        fieldErrors: { email: "An account with this email already exists." },
-      };
-    }
-    if (message.includes("users.name")) {
-      return { fieldErrors: { name: "This name is already taken." } };
-    }
-    if (message.includes("users.nickname")) {
-      return {
-        fieldErrors: { nickname: "This nickname is already taken." },
-      };
+    if (error instanceof MongoServerError && error.code === 11000) {
+      const field = Object.keys(error.keyPattern ?? {})[0];
+      if (field === "email") {
+        return { fieldErrors: { email: "An account with this email already exists." } };
+      }
+      if (field === "name") return { fieldErrors: { name: "This name is already taken." } };
+      if (field === "nickname") {
+        return { fieldErrors: { nickname: "This nickname is already taken." } };
+      }
     }
 
     console.error(error);

@@ -1,18 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { db, type UserStatus } from "@/lib/db";
+import { caseInsensitive, users, type UserStatus } from "@/lib/db";
 import { verifyPassword } from "@/lib/passwords";
 import { createSession, destroySession } from "@/lib/session";
 
 export type SignInState = {
   error?: string;
-};
-
-type AccountRow = {
-  id: number;
-  password: string;
-  status: string;
 };
 
 function readText(formData: FormData, key: string) {
@@ -31,9 +25,7 @@ export async function signIn(
     return { error: "Enter your email and password." };
   }
 
-  const account = db
-    .prepare("SELECT id, password, status FROM users WHERE email = ?")
-    .get(email) as AccountRow | undefined;
+  const account = await (await users()).findOne({ email }, { collation: caseInsensitive });
 
   if (!account || !verifyPassword(password, account.password)) {
     return { error: "Email or password is incorrect." };
@@ -47,7 +39,7 @@ export async function signIn(
     return { error: "This account was rejected." };
   }
 
-  await createSession(Number(account.id));
+  await createSession(account._id);
   redirect("/");
 }
 
