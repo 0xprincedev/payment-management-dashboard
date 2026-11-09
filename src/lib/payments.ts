@@ -65,9 +65,6 @@ type Viewer = {
 type SortedPayment = PaymentRecord & {
   userId: number;
   ownerNickname: string;
-  otherGroupSort: number;
-  counterpartySort: number;
-  counterpartyId: number;
 };
 
 function emptySummary(): WidgetSummary {
@@ -83,7 +80,6 @@ function toSortedPayment(
   owner: UserDoc,
   usersById: Map<number, UserDoc>,
   groupsById: Map<number, GroupDoc>,
-  ownGroupId: number,
 ): SortedPayment {
   const counterparty = payment.memberId == null ? undefined : usersById.get(payment.memberId);
   const internal = payment.kind === "internal";
@@ -104,26 +100,13 @@ function toSortedPayment(
     amountCents: payment.amountCents,
     note: payment.note,
     ownerNickname: owner.nickname,
-    otherGroupSort: internal && memberGroupId !== ownGroupId ? (memberGroup?.sortOrder ?? 1_000_000) : 0,
-    counterpartySort: internal ? (counterparty?.sortOrder ?? 1_000_000) : 0,
-    counterpartyId: internal ? (counterparty?._id ?? 0) : 0,
   };
 }
 
-function paymentRank(payment: SortedPayment, ownGroupId: number) {
-  if (payment.kind === "bank") return 0;
-  return payment.memberGroupId === ownGroupId ? 1 : 2;
-}
-
-function comparePayments(left: SortedPayment, right: SortedPayment, ownGroupId: number) {
-  return (
-    paymentRank(left, ownGroupId) - paymentRank(right, ownGroupId) ||
-    left.otherGroupSort - right.otherGroupSort ||
-    left.counterpartySort - right.counterpartySort ||
-    left.counterpartyId - right.counterpartyId ||
-    left.paidOn.localeCompare(right.paidOn) ||
-    left.id - right.id
-  );
+function comparePayments(left: SortedPayment, right: SortedPayment) {
+  const leftInternal = left.kind === "internal" ? 1 : 0;
+  const rightInternal = right.kind === "internal" ? 1 : 0;
+  return leftInternal - rightInternal || left.paidOn.localeCompare(right.paidOn) || left.id - right.id;
 }
 
 async function loadDirectory() {
@@ -293,16 +276,16 @@ export async function listMembers(): Promise<GroupMember[]> {
     .sort((left, right) => compareText(left.groupName, right.groupName) || compareText(left.nickname, right.nickname));
 }
 
-async function sortedPayments(filter: { widgetId: number; userId?: number }, ownGroupId: number) {
+async function sortedPayments(filter: { widgetId: number; userId?: number }) {
   const { usersById, groupsById } = await loadDirectory();
   const paymentDocs = await (await payments()).find(filter).toArray();
   return paymentDocs
     .flatMap((payment) => {
       const owner = usersById.get(payment.userId);
       if (!owner) return [];
-      return [toSortedPayment(payment, owner, usersById, groupsById, ownGroupId)];
+      return [toSortedPayment(payment, owner, usersById, groupsById)];
     })
-    .sort((left, right) => comparePayments(left, right, ownGroupId));
+    .sort((left, right) => comparePayments(left, right));
 }
 
 export async function listPayments(
@@ -310,7 +293,7 @@ export async function listPayments(
   viewer: Viewer & { groupId: number },
 ): Promise<PaymentRecord[]> {
   await io();
-  return sortedPayments({ widgetId, userId: viewer.id }, viewer.groupId);
+  return sortedPayments({ widgetId, userId: viewer.id });
 }
 
 export async function listMemberPayments(
@@ -322,12 +305,12 @@ export async function listMemberPayments(
   const members = (await (await users()).find({ groupId, status: "Approved" }).toArray()).sort(
     (left, right) => left.sortOrder - right.sortOrder || left._id - right._id,
   );
-  const rows = (await sortedPayments({ widgetId }, groupId)).filter((payment) => {
+  const rows = (await sortedPayments({ widgetId })).filter((payment) => {
     const owner = members.find((member) => member._id === payment.userId);
     return owner?.status === "Approved" && owner.groupId === groupId;
   });
   rows.sort(
-    (left, right) => compareText(left.ownerNickname, right.ownerNickname) || comparePayments(left, right, groupId),
+    (left, right) => compareText(left.ownerNickname, right.ownerNickname) || comparePayments(left, right),
   );
 
   const byUser = new Map<number, PaymentRecord[]>();

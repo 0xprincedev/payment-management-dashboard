@@ -360,13 +360,7 @@ export async function loadGroupTransactions(
         },
       ];
     })
-    .sort(
-      (left, right) =>
-        left.memberSort - right.memberSort ||
-        left.ownerId - right.ownerId ||
-        left.paidOn.localeCompare(right.paidOn) ||
-        left.id - right.id,
-    )
+    .sort((left, right) => left.paidOn.localeCompare(right.paidOn) || left.id - right.id)
     .map(({ ownerId: _ownerId, ...row }) => row);
 
   return {

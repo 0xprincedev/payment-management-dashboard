@@ -347,11 +347,7 @@ function groupRows(rows: GroupTransaction[], key: "member" | "note") {
   return [...sections.values()]
     .map((section) => ({
       ...section,
-      rows: [...section.rows].sort((a, b) =>
-        key === "note"
-          ? a.memberSort - b.memberSort || a.paidOn.localeCompare(b.paidOn) || a.id - b.id
-          : a.paidOn.localeCompare(b.paidOn) || a.id - b.id,
-      ),
+      rows: [...section.rows].sort((a, b) => a.paidOn.localeCompare(b.paidOn) || a.id - b.id),
     }))
     .sort((a, b) =>
       key === "member"
