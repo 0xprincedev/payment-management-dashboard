@@ -6,10 +6,11 @@ import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
 import MemberViews from "@/components/member-views";
 import { isAdmin, isBoss } from "@/lib/access";
-import { getWidget, listMemberPayments, listMembers, listPayments } from "@/lib/payments";
+import { getWidget, listMemberPayments, listMembers } from "@/lib/payments";
 import { getCurrentUser } from "@/lib/session";
 import AddPaymentDialog from "../add-payment-dialog";
 import ExportDialog from "../export-dialog";
+import MemberRanking from "../member-ranking";
 import RecordsTable from "../records-table";
 
 export const metadata: Metadata = {
@@ -39,13 +40,8 @@ async function WidgetContent({ params }: { params: Promise<{ id: string }> }) {
   if (!widget) notFound();
 
   const members = await listMembers();
-  const roster =
-    isBoss(user.role) || isAdmin(user.role) ? await listMemberPayments(widget.id, widget.groupId) : [];
-  const payments = isBoss(user.role)
-    ? (roster.find((member) => member.id === user.id)?.payments ?? [])
-    : isAdmin(user.role)
-      ? []
-      : await listPayments(widget.id, user);
+  const roster = await listMemberPayments(widget.id, widget.groupId);
+  const payments = roster.find((member) => member.id === user.id)?.payments ?? [];
   const memberPayments = isAdmin(user.role) ? roster : roster.filter((member) => member.id !== user.id);
 
   return (
@@ -73,6 +69,15 @@ async function WidgetContent({ params }: { params: Promise<{ id: string }> }) {
         </Box>
         <ExportDialog widgetId={widget.id} defaultFilename={widget.name} />
       </Box>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", md: "row" },
+          alignItems: "flex-start",
+          gap: 3,
+        }}
+      >
+        <Box sx={{ flex: "1 1 auto", minWidth: 0, width: "100%" }}>
       {isBoss(user.role) ? (
         <MemberViews
           ownId={user.id}
@@ -111,6 +116,9 @@ async function WidgetContent({ params }: { params: Promise<{ id: string }> }) {
           <RecordsTable payments={payments} members={members} ownGroupId={user.groupId} topMargin={2} />
         </Box>
       )}
+        </Box>
+        <MemberRanking members={roster} currentUserId={user.id} />
+      </Box>
     </AppShell>
   );
 }
