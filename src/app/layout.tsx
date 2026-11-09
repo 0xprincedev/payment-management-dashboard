@@ -13,6 +13,10 @@ const publicSans = Public_Sans({
 export const metadata: Metadata = {
   title: "Payment management",
   description: "Payment management",
+  icons: {
+    icon: [{ url: "/bitcoin.png?v=2", type: "image/png" }],
+    apple: "/bitcoin.png?v=2",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

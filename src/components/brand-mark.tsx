@@ -4,22 +4,14 @@ import Typography from "@mui/material/Typography";
 export default function BrandMark({ onDark = false }: { onDark?: boolean }) {
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}>
-      <Box
-        aria-hidden
-        sx={{
-          width: 36,
-          height: 36,
-          flexShrink: 0,
-          borderRadius: "10px",
-          bgcolor: "primary.main",
-          color: "primary.contrastText",
-          display: "grid",
-          placeItems: "center",
-          fontWeight: 700,
-          fontSize: 18,
-        }}
-      >
-        P
+      <Box sx={{ width: 40, height: 40, flexShrink: 0, lineHeight: 0 }}>
+        <Box
+          component="img"
+          src="/bitcoin.png"
+          alt=""
+          aria-hidden
+          sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
       </Box>
       <Box sx={{ minWidth: 0 }}>
         <Typography
