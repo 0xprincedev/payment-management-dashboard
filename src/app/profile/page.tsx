@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
+import PageHeader from "@/components/page-header";
 import { getCurrentUser } from "@/lib/session";
 import ProfileForms from "./profile-forms";
 
@@ -26,12 +26,7 @@ async function ProfileContent() {
 
   return (
     <AppShell user={user} current="profile">
-      <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-        Profile
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-        Your account details for {user.groupName}.
-      </Typography>
+      <PageHeader title="Profile" description={`Your account details for ${user.groupName}.`} />
       <ProfileForms
         name={user.name}
         nickname={user.nickname}

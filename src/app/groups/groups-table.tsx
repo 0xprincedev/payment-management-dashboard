@@ -174,15 +174,12 @@ export default function GroupsTable({ groups }: { groups: GroupRecord[] }) {
   }
 
   return (
-    <Box sx={{ mt: 3 }}>
+    <Box>
       {notice ? (
         <Alert severity={notice.severity} sx={{ mb: 2 }}>
           {notice.text}
         </Alert>
       ) : null}
-      <Button variant="contained" onClick={() => setCreating(true)}>
-        Add group
-      </Button>
       <Dialog open={creating} onClose={() => setCreating(false)} fullWidth maxWidth="xs">
         {creating ? (
           <CreateGroupForm
@@ -196,12 +193,26 @@ export default function GroupsTable({ groups }: { groups: GroupRecord[] }) {
           />
         ) : null}
       </Dialog>
-      {rows.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
-          No groups yet.
-        </Typography>
-      ) : (
-        <Paper elevation={0} sx={{ mt: 2, border: 1, borderColor: "divider", overflow: "hidden" }}>
+      <Paper elevation={0} sx={{ border: 1, borderColor: "divider", overflow: "hidden" }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "flex-end",
+            px: { xs: 1.5, sm: 2 },
+            py: 1.5,
+            borderBottom: 1,
+            borderColor: "divider",
+          }}
+        >
+          <Button variant="contained" onClick={() => setCreating(true)}>
+            Add group
+          </Button>
+        </Box>
+        {rows.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 6, textAlign: "center" }}>
+            No groups yet.
+          </Typography>
+        ) : (
           <TableContainer>
             <Table size="small" sx={{ minWidth: 640, userSelect: draggingId === null ? "auto" : "none" }}>
               <TableHead>
@@ -266,8 +277,8 @@ export default function GroupsTable({ groups }: { groups: GroupRecord[] }) {
               </TableBody>
             </Table>
           </TableContainer>
-        </Paper>
-      )}
+        )}
+      </Paper>
     </Box>
   );
 }

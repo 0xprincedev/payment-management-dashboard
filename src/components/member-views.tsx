@@ -87,7 +87,7 @@ export default function MemberViews({
     <MemberActionSlot.Provider value={slot}>
       <Box
         sx={{
-          mt: 3,
+          mt: 0,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",

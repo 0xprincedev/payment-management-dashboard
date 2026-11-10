@@ -2,21 +2,23 @@
 
 import Button, { type ButtonProps } from "@mui/material/Button";
 
+function plain(color: string) {
+  return {
+    color,
+    bgcolor: "transparent",
+    boxShadow: "none",
+    "&:hover, &:focus, &.Mui-focusVisible": { bgcolor: "transparent" },
+  };
+}
+
 const tones = {
-  primary: {
-    color: "primary.main",
-    bgcolor: "rgba(115, 103, 240, 0.12)",
-    "&:hover": { bgcolor: "rgba(115, 103, 240, 0.2)" },
-  },
-  error: {
-    color: "error.main",
-    bgcolor: "rgba(255, 76, 81, 0.12)",
-    "&:hover": { bgcolor: "rgba(255, 76, 81, 0.2)" },
-  },
+  primary: plain("var(--mui-palette-primary-main)"),
+  error: plain("var(--mui-palette-error-main)"),
   neutral: {
     color: "text.primary",
-    bgcolor: "action.hover",
-    "&:hover": { bgcolor: "action.selected" },
+    bgcolor: "var(--mui-palette-background-paper)",
+    boxShadow: "inset 0 0 0 1px var(--mui-palette-divider)",
+    "&:hover": { bgcolor: "var(--mui-palette-action-hover)" },
   },
 } as const;
 
@@ -38,6 +40,7 @@ export default function ActionButton({
           borderRadius: "8px",
           fontWeight: 600,
           lineHeight: 1.4,
+          backgroundImage: "none",
           "&.Mui-disabled": { opacity: 0.45 },
         },
         tones[tone],

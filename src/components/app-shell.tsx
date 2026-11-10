@@ -43,16 +43,16 @@ export default function AppShell({
           height: "100vh",
           flexShrink: 0,
           px: 1.5,
-          py: 2,
+          py: 2.5,
           bgcolor: "#2F3349",
           color: sidebarText,
           borderRight: "1px solid rgba(225, 222, 245, 0.08)",
         }}
       >
-        <Box sx={{ px: 0.5, mb: 2.5 }}>
+        <Box sx={{ px: 0.5, pb: 2.5, mb: 2, borderBottom: "1px solid rgba(225, 222, 245, 0.08)" }}>
           <BrandMark onDark />
         </Box>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
           <NavItem href="/" current={current === "home"} icon={HomeOutlinedIcon}>
             Home
           </NavItem>
@@ -112,10 +112,21 @@ export default function AppShell({
                 </Typography>
               </Box>
             </Box>
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 1 }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 1.25 }}>
               <ColorModeToggle onDark />
               <Box component="form" action={signOut}>
-                <Button type="submit" color="inherit" size="small" sx={{ color: sidebarMuted }}>
+                <Button
+                  type="submit"
+                  color="inherit"
+                  size="small"
+                  sx={{
+                    minWidth: 0,
+                    px: 1,
+                    color: sidebarMuted,
+                    borderRadius: "8px",
+                    "&:hover": { color: "#fff", bgcolor: "rgba(225, 222, 245, 0.08)" },
+                  }}
+                >
                   Sign out
                 </Button>
               </Box>
@@ -128,8 +139,8 @@ export default function AppShell({
         sx={{
           flex: 1,
           minWidth: 0,
-          px: { xs: 2, sm: 4 },
-          py: { xs: 3, sm: 4 },
+          px: { xs: 2, sm: 3, md: 4 },
+          py: { xs: 2.5, sm: 3.5 },
         }}
       >
         {children}
@@ -159,18 +170,20 @@ function NavItem({
         alignItems: "center",
         gap: 1.25,
         px: 1.5,
-        py: 1,
+        py: 0.9,
         borderRadius: "8px",
         fontWeight: current ? 600 : 500,
-        fontSize: 15,
-        color: current ? "#7367F0" : sidebarText,
+        fontSize: 14.5,
+        letterSpacing: "-0.01em",
+        color: current ? "#C4BFFF" : sidebarText,
         bgcolor: current ? "rgba(115, 103, 240, 0.16)" : "transparent",
+        boxShadow: current ? "inset 3px 0 0 #7367F0" : "none",
         "&:hover": {
           bgcolor: current ? "rgba(115, 103, 240, 0.22)" : "rgba(225, 222, 245, 0.08)",
         },
       }}
     >
-      <Icon sx={{ fontSize: 22 }} />
+      <Icon sx={{ fontSize: 20, opacity: current ? 1 : 0.85 }} />
       {children}
     </Box>
   );

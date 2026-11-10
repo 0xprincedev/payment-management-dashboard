@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
+import PageHeader from "@/components/page-header";
 import { isAdmin, isBoss } from "@/lib/access";
 import { listGroupProfiles, listGroupsWithProfiles } from "@/lib/members";
 import { getCurrentUser } from "@/lib/session";
@@ -32,12 +32,10 @@ async function MembersContent() {
     const groups = await listGroupsWithProfiles();
     return (
       <AppShell user={user} current="members">
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-          Members
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-          Every group. Change a member&apos;s group or role, or drag members into the order used in the spreadsheet export.
-        </Typography>
+        <PageHeader
+          title="Members"
+          description="Every group. Change a member's group or role, or drag members into the order used in the spreadsheet export."
+        />
         <AdminMembers groups={groups} selfId={user.id} />
       </AppShell>
     );
@@ -47,12 +45,10 @@ async function MembersContent() {
 
   return (
     <AppShell user={user} current="members">
-      <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-        Members
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-        Profiles for {user.groupName}. Drag members into the order used in the spreadsheet export.
-      </Typography>
+      <PageHeader
+        title="Members"
+        description={`Profiles for ${user.groupName}. Drag members into the order used in the spreadsheet export.`}
+      />
       <MembersTable members={members} selfId={user.id} />
     </AppShell>
   );

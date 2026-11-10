@@ -71,7 +71,7 @@ export default function MemberRanking({
     <Paper
       elevation={0}
       sx={{
-        mt: 3,
+        mt: 0,
         width: { xs: "100%", md: 240 },
         flexShrink: 0,
         position: { md: "sticky" },

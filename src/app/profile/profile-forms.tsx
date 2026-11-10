@@ -32,7 +32,7 @@ export default function ProfileForms({
         display: "grid",
         gap: 2,
         gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-        mt: 3,
+        mt: 0,
         maxWidth: 960,
         alignItems: "start",
       }}
@@ -72,7 +72,7 @@ function AccountForm({
 
   return (
     <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, border: 1, borderColor: "divider" }}>
-      <Typography variant="h6" component="h2">
+      <Typography variant="h6" component="h2" sx={{ pb: 1.5, borderBottom: 1, borderColor: "divider" }}>
         Account
       </Typography>
       <Stack
@@ -139,7 +139,7 @@ function PasswordForm() {
 
   return (
     <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, border: 1, borderColor: "divider" }}>
-      <Typography variant="h6" component="h2">
+      <Typography variant="h6" component="h2" sx={{ pb: 1.5, borderBottom: 1, borderColor: "divider" }}>
         Change password
       </Typography>
       <Stack

@@ -57,6 +57,24 @@ function formatCents(cents: number | null) {
   return formatAmount(cents);
 }
 
+function CellValue({ value, emphasize = false }: { value: string; emphasize?: boolean }) {
+  if (!value) {
+    return (
+      <Box component="span" sx={{ color: "text.disabled" }}>
+        —
+      </Box>
+    );
+  }
+
+  return emphasize ? (
+    <Box component="span" sx={{ fontWeight: 700 }}>
+      {value}
+    </Box>
+  ) : (
+    value
+  );
+}
+
 function moveRow(rows: AccountRecord[], from: number, to: number) {
   const updated = [...rows];
   const [moved] = updated.splice(from, 1);
@@ -209,10 +227,26 @@ export default function AccountsTable({
     </Button>
   );
 
+  const showToolbar = !readOnly && !relocateAddButton;
+
   return (
-    <Box sx={{ mt: readOnly ? 1.5 : relocateAddButton ? 0 : 3 }}>
-      {readOnly ? null : relocateAddButton ? (actionSlot ? createPortal(addButton, actionSlot) : null) : addButton}
-      <Paper elevation={0} sx={{ mt: readOnly ? 0 : 2, border: 1, borderColor: "divider", overflow: "hidden" }}>
+    <Box sx={{ mt: readOnly ? 1.5 : relocateAddButton ? 0 : 0 }}>
+      {readOnly || !relocateAddButton ? null : actionSlot ? createPortal(addButton, actionSlot) : null}
+      <Paper elevation={0} sx={{ border: 1, borderColor: "divider", overflow: "hidden" }}>
+        {showToolbar ? (
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "flex-end",
+              px: { xs: 1.5, sm: 2 },
+              py: 1.5,
+              borderBottom: 1,
+              borderColor: "divider",
+            }}
+          >
+            {addButton}
+          </Box>
+        ) : null}
         {rows.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ py: 6, textAlign: "center" }}>
             No accounts yet.
@@ -256,36 +290,38 @@ export default function AccountsTable({
                         />
                       </TableCell>
                     )}
-                    <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{name}</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>{row.platform}</TableCell>
-                    <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{row.account}</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>{row.nationality}</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>{row.status}</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>{formatCreatedAt(row.createdAt)}</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>{row.machine}</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>{row.project}</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}><CellValue value={name} emphasize /></TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}><CellValue value={row.platform} /></TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}><CellValue value={row.account} emphasize /></TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}><CellValue value={row.nationality} /></TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}><CellValue value={row.status} /></TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}><CellValue value={formatCreatedAt(row.createdAt)} /></TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}><CellValue value={row.machine} /></TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}><CellValue value={row.project} /></TableCell>
                     <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                      {formatCents(row.availableCents)}
+                      <CellValue value={formatCents(row.availableCents)} />
                     </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                      {formatCents(row.pendingCents)}
+                      <CellValue value={formatCents(row.pendingCents)} />
                     </TableCell>
-                    <TableCell sx={{ minWidth: 180 }}>{row.note}</TableCell>
+                    <TableCell sx={{ minWidth: 180 }}><CellValue value={row.note} /></TableCell>
                     {readOnly ? null : (
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
-                        <ActionButton
-                          onClick={() => setEditing(row)}
-                          disabled={savingOrder}
-                        >
-                          Edit
-                        </ActionButton>
-                        <ActionButton
-                          tone="error"
-                          onClick={() => setDeleting(row)}
-                          disabled={savingOrder}
-                        >
-                          Delete
-                        </ActionButton>
+                        <Box sx={{ display: "flex", gap: 0.75 }}>
+                          <ActionButton
+                            onClick={() => setEditing(row)}
+                            disabled={savingOrder}
+                          >
+                            Edit
+                          </ActionButton>
+                          <ActionButton
+                            tone="error"
+                            onClick={() => setDeleting(row)}
+                            disabled={savingOrder}
+                          >
+                            Delete
+                          </ActionButton>
+                        </Box>
                       </TableCell>
                     )}
                   </TableRow>

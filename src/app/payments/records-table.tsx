@@ -136,7 +136,9 @@ export default function RecordsTable({
           flexDirection: { xs: "column", sm: "row" },
           gap: 2,
           px: { xs: 2, sm: 3 },
-          pt: { xs: 2, sm: 3 },
+          py: { xs: 2, sm: 2.5 },
+          borderBottom: payments.length === 0 ? 0 : 1,
+          borderColor: "divider",
         }}
       >
         <Box>
@@ -199,11 +201,11 @@ export default function RecordsTable({
         </Box>
       </Box>
       {payments.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ px: { xs: 2, sm: 3 }, py: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ px: { xs: 2, sm: 3 }, py: 6, textAlign: "center" }}>
           No payments yet.
         </Typography>
       ) : (
-        <TableContainer sx={{ mt: 1 }}>
+        <TableContainer>
           <Table size="small" sx={{ minWidth: 680 }}>
             <TableHead>
               <TableRow>

@@ -1,7 +1,9 @@
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
+import PageHeader from "@/components/page-header";
 import type { PaymentWidget } from "@/lib/payments";
 import type { CurrentUser } from "@/lib/session";
 
@@ -14,22 +16,17 @@ export default function HomeScreen({
 }) {
   return (
     <AppShell user={user} current="home">
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-          Home
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-          Signed in as {user.nickname}.
-        </Typography>
+        <PageHeader title="Home" description={`Signed in as ${user.nickname}.`} />
         <Box
           sx={{
             display: "grid",
             gap: 2,
             gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-            mt: 3,
+            mt: 0,
           }}
         >
-          <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, border: 1, borderColor: "divider" }}>
-            <Typography variant="h6" component="h2">
+          <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3 }, border: 1, borderColor: "divider" }}>
+            <Typography variant="h6" component="h2" sx={{ mb: 0.5 }}>
               Account
             </Typography>
             <Box sx={{ mt: 1 }}>
@@ -39,8 +36,8 @@ export default function HomeScreen({
               <Detail label="Role" value={user.role} />
             </Box>
           </Paper>
-          <Paper elevation={0} sx={{ p: { xs: 2, sm: 3 }, border: 1, borderColor: "divider" }}>
-            <Typography variant="h6" component="h2">
+          <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3 }, border: 1, borderColor: "divider" }}>
+            <Typography variant="h6" component="h2" sx={{ mb: 0.5 }}>
               Payments
             </Typography>
             {widgets.length === 0 ? (
@@ -50,20 +47,29 @@ export default function HomeScreen({
             ) : (
               <Box sx={{ mt: 1 }}>
                 {widgets.slice(0, 5).map((widget) => (
-                  <Typography
+                  <Box
                     key={widget.id}
                     component="a"
                     href={`/payments/${widget.id}`}
-                    variant="body2"
                     sx={{
-                      display: "block",
-                      py: 0.75,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 1,
+                      mx: -1,
+                      px: 1,
+                      py: 1,
+                      borderRadius: "8px",
                       fontWeight: 600,
-                      "&:hover": { color: "primary.main" },
+                      fontSize: 14,
+                      "&:hover": { bgcolor: "action.hover", color: "primary.main" },
                     }}
                   >
-                    {user.role === "Admin" ? `${widget.groupName} · ${widget.name}` : widget.name}
-                  </Typography>
+                    <Box component="span" sx={{ minWidth: 0 }}>
+                      {user.role === "Admin" ? `${widget.groupName} · ${widget.name}` : widget.name}
+                    </Box>
+                    <ChevronRightIcon sx={{ fontSize: 18, color: "text.secondary", flexShrink: 0 }} />
+                  </Box>
                 ))}
               </Box>
             )}

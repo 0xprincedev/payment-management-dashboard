@@ -52,8 +52,8 @@ export default function AdminMembers({ groups, selfId }: { groups: Section[]; se
           {notice.text}
         </Alert>
       ) : null}
-      {sections.map((section) => (
-        <Box key={section.id} sx={{ mt: 4 }}>
+      {sections.map((section, index) => (
+        <Box key={section.id} sx={{ mt: index === 0 ? (notice ? 3 : 0) : 4 }}>
           <Typography variant="h5" component="h2" sx={{ fontWeight: 700, mb: 2 }}>
             {section.name}
           </Typography>

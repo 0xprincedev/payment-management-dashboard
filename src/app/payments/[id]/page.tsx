@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
+import PageHeader from "@/components/page-header";
 import MemberViews from "@/components/member-views";
 import { isAdmin, isBoss } from "@/lib/access";
 import { getWidget, listMemberPayments, listMembers } from "@/lib/payments";
@@ -46,29 +47,14 @@ async function WidgetContent({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <AppShell user={user} current="payments">
-      <Typography component="a" href="/payments" variant="body2" color="primary" sx={{ fontWeight: 600 }}>
+      <Typography component="a" href="/payments" variant="body2" color="primary" sx={{ display: "inline-block", mb: 1.5, fontWeight: 600 }}>
         All widgets
       </Typography>
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: { xs: "stretch", sm: "flex-start" },
-          flexDirection: { xs: "column", sm: "row" },
-          gap: 2,
-          mt: 1,
-        }}
-      >
-        <Box>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-            {widget.name}
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-            {isAdmin(user.role) ? `Payments for ${widget.groupName}.` : "Add your payments one at a time."}
-          </Typography>
-        </Box>
-        <ExportDialog widgetId={widget.id} defaultFilename={widget.name} />
-      </Box>
+      <PageHeader
+        title={widget.name}
+        description={isAdmin(user.role) ? `Payments for ${widget.groupName}.` : "Add your payments one at a time."}
+        action={<ExportDialog widgetId={widget.id} defaultFilename={widget.name} />}
+      />
       <Box
         sx={{
           display: "flex",
@@ -111,7 +97,7 @@ async function WidgetContent({ params }: { params: Promise<{ id: string }> }) {
           }))}
         />
       ) : (
-        <Box sx={{ mt: 3 }}>
+        <Box>
           <AddPaymentDialog widgetId={widget.id} members={members} />
           <RecordsTable payments={payments} members={members} ownGroupId={user.groupId} topMargin={2} />
         </Box>

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
+import PageHeader from "@/components/page-header";
 import { isAdmin } from "@/lib/access";
 import { listManagedGroups } from "@/lib/group-admin";
 import { getCurrentUser } from "@/lib/session";
@@ -31,12 +31,7 @@ async function GroupsContent() {
 
   return (
     <AppShell user={user} current="groups">
-      <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-        Groups
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-        Drag groups into the order used on Members, Accounts, and Payments.
-      </Typography>
+      <PageHeader title="Groups" description="Drag groups into the order used on Members, Accounts, and Payments." />
       <GroupsTable groups={groups} />
     </AppShell>
   );

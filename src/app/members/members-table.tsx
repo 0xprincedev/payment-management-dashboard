@@ -216,7 +216,7 @@ export default function MembersTable({
   }
 
   return (
-    <Box sx={{ mt: 3 }}>
+    <Box>
       {notice ? (
         <Alert severity={notice.severity} sx={{ mb: 2 }}>
           {notice.text}

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
+import PageHeader from "@/components/page-header";
 import MemberViews from "@/components/member-views";
 import { isAdmin, isBoss } from "@/lib/access";
 import { listAccounts, listAllAccountsByGroup, listGroupMemberAccounts } from "@/lib/accounts";
@@ -31,14 +32,9 @@ async function AccountsContent() {
     const groups = await listAllAccountsByGroup();
     return (
       <AppShell user={user} current="accounts">
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-          Accounts
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-          Accounts for every group.
-        </Typography>
-        {groups.map((group) => (
-          <Box key={group.id} sx={{ mt: 4 }}>
+        <PageHeader title="Accounts" description="Accounts for every group." />
+        {groups.map((group, index) => (
+          <Box key={group.id} sx={{ mt: index === 0 ? 0 : 4 }}>
             <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>
               {group.name}
             </Typography>
@@ -67,12 +63,7 @@ async function AccountsContent() {
 
   return (
     <AppShell user={user} current="accounts">
-      <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-        Accounts
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-        Your accounts. Drag a row to set their order.
-      </Typography>
+      <PageHeader title="Accounts" description="Your accounts. Drag a row to set their order." />
       {isBoss(user.role) ? (
         <MemberViews
           ownId={user.id}

@@ -5,6 +5,7 @@ import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import AppShell from "@/components/app-shell";
+import PageHeader from "@/components/page-header";
 import { isAdmin, isBoss } from "@/lib/access";
 import { formatAmount, listAllWidgets, listWidgets, type PaymentWidget } from "@/lib/payments";
 import { getCurrentUser } from "@/lib/session";
@@ -35,25 +36,25 @@ async function PaymentsContent() {
 
   return (
     <AppShell user={user} current="payments">
-      <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
-        Payments
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
-        {isAdmin(user.role)
-          ? "Every group's payment widgets."
-          : isBoss(user.role)
-            ? `Create a widget for ${user.groupName}. Members select it and add their payments one by one.`
-            : "Select a widget, then add your payments one by one."}
-      </Typography>
+      <PageHeader
+        title="Payments"
+        description={
+          isAdmin(user.role)
+            ? "Every group's payment widgets."
+            : isBoss(user.role)
+              ? `Create a widget for ${user.groupName}. Members select it and add their payments one by one.`
+              : "Select a widget, then add your payments one by one."
+        }
+      />
       {isBoss(user.role) ? (
-        <Paper elevation={0} sx={{ maxWidth: 560, mt: 3, p: { xs: 2, sm: 3 }, border: 1, borderColor: "divider" }}>
+        <Paper elevation={0} sx={{ maxWidth: 560, p: { xs: 2, sm: 3 }, border: 1, borderColor: "divider" }}>
           <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
             New widget
           </Typography>
           <CreateWidgetForm />
         </Paper>
       ) : null}
-      <Box sx={{ display: "grid", gap: 2, mt: 3, maxWidth: 920 }}>
+      <Box sx={{ display: "grid", gap: 2, mt: isBoss(user.role) ? 3 : 0, maxWidth: 920 }}>
         {widgets.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             No payment widgets yet.
@@ -100,8 +101,11 @@ function WidgetLink({
         p: { xs: 2, sm: 2.5 },
         border: 1,
         borderColor: "divider",
-        transition: "border-color 0.15s ease",
-        "&:hover": { borderColor: "primary.main" },
+        transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+        "&:hover": {
+          borderColor: "primary.main",
+          boxShadow: "0 8px 24px rgba(115, 103, 240, 0.12)",
+        },
       }}
     >
       <Box
@@ -122,7 +126,11 @@ function WidgetLink({
         ) : null}
         {summary ? (
           <Box sx={{ mt: 1 }}>
-            <Typography variant="h6" component="p" sx={{ fontWeight: 700 }}>
+            <Typography
+              variant="h6"
+              component="p"
+              sx={{ fontWeight: 700, fontSize: "1.5rem", letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}
+            >
               {money(summary.totalCents)}
             </Typography>
             <Typography variant="body2" color="text.secondary">
