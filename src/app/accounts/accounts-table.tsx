@@ -20,6 +20,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import DragHandle from "@/components/drag-handle";
 import { MemberActionSlot } from "@/components/member-views";
 import type { AccountRecord } from "@/lib/account-record";
 import { formatAmount, formatAmountInput } from "@/lib/amount";
@@ -135,7 +136,7 @@ export default function AccountsTable({
     void persistOrder(current, rowsFor(drag.startIds));
   }
 
-  function startDrag(event: ReactPointerEvent<HTMLTableRowElement>, index: number) {
+  function startDrag(event: ReactPointerEvent<HTMLElement>, index: number) {
     if (savingOrder || dragRef.current || event.button !== 0) return;
     event.preventDefault();
     try {
@@ -152,13 +153,13 @@ export default function AccountsTable({
     setDraggingId(rowsRef.current[index].id);
   }
 
-  function moveDrag(event: ReactPointerEvent<HTMLTableRowElement>) {
+  function moveDrag(event: ReactPointerEvent<HTMLElement>) {
     const drag = dragRef.current;
     if (!drag || drag.native || drag.pointerId !== event.pointerId || !bodyRef.current) return;
     placeDrag(rowIndexAt(bodyRef.current, event.clientY));
   }
 
-  function cancelDrag(event: ReactPointerEvent<HTMLTableRowElement>) {
+  function cancelDrag(event: ReactPointerEvent<HTMLElement>) {
     const drag = dragRef.current;
     if (!drag || drag.native || drag.pointerId !== event.pointerId) return;
     const restored = rowsFor(drag.startIds);
@@ -168,13 +169,13 @@ export default function AccountsTable({
     setDraggingId(null);
   }
 
-  function endDrag(event: ReactPointerEvent<HTMLTableRowElement>) {
+  function endDrag(event: ReactPointerEvent<HTMLElement>) {
     const drag = dragRef.current;
     if (!drag || drag.native || drag.pointerId !== event.pointerId) return;
     finishDrag();
   }
 
-  function startNativeDrag(event: ReactDragEvent<HTMLTableRowElement>) {
+  function startNativeDrag(event: ReactDragEvent<HTMLElement>) {
     const drag = dragRef.current;
     if (!drag) return;
     drag.native = true;
@@ -220,6 +221,7 @@ export default function AccountsTable({
           <Table size="small" sx={{ minWidth: 1560, userSelect: draggingId === null ? "auto" : "none" }}>
             <TableHead>
               <TableRow>
+                {readOnly ? null : <TableCell sx={{ width: 44, px: 1 }} />}
                 {columns.map((column) => (
                   <TableCell key={column} sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
                     {column}
@@ -232,33 +234,27 @@ export default function AccountsTable({
                 {rows.map((row, index) => (
                   <TableRow
                     key={row.id}
-                    draggable={readOnly ? undefined : !savingOrder}
-                    onPointerDown={
-                      readOnly
-                        ? undefined
-                        : (event) => {
-                            if ((event.target as HTMLElement).closest("button, a, input, textarea")) return;
-                            startDrag(event, index);
-                          }
-                    }
-                    onPointerMove={readOnly ? undefined : moveDrag}
-                    onPointerUp={readOnly ? undefined : endDrag}
-                    onPointerCancel={readOnly ? undefined : cancelDrag}
-                    onDragStart={readOnly ? undefined : startNativeDrag}
-                    onDragEnd={
-                      readOnly
-                        ? undefined
-                        : () => {
-                            if (dragRef.current?.native) finishDrag();
-                          }
-                    }
                     sx={{
-                      cursor: readOnly || savingOrder ? "default" : draggingId === row.id ? "grabbing" : "grab",
-                      touchAction: readOnly ? undefined : "none",
                       bgcolor: draggingId === row.id ? "action.selected" : undefined,
                       "& .MuiButton-root": { cursor: "pointer" },
                     }}
                   >
+                    {readOnly ? null : (
+                      <TableCell sx={{ width: 44, px: 1 }}>
+                        <DragHandle
+                          disabled={savingOrder}
+                          dragging={draggingId === row.id}
+                          onPointerDown={(event) => startDrag(event, index)}
+                          onPointerMove={moveDrag}
+                          onPointerUp={endDrag}
+                          onPointerCancel={cancelDrag}
+                          onDragStart={startNativeDrag}
+                          onDragEnd={() => {
+                            if (dragRef.current?.native) finishDrag();
+                          }}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{name}</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>{row.platform}</TableCell>
                     <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{row.account}</TableCell>
