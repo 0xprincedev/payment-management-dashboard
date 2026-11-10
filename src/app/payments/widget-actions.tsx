@@ -10,6 +10,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import ActionButton from "@/components/action-button";
 import { submitFormOnEnter } from "@/lib/submit-on-enter";
 import { deleteWidget, renameWidget, type FormState } from "./actions";
 
@@ -31,12 +32,16 @@ export default function WidgetActions({
 
   return (
     <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-      <Button type="button" size={compact ? "small" : "medium"} onClick={() => setEditing(true)}>
+      <ActionButton size={compact ? "small" : "medium"} onClick={() => setEditing(true)}>
         Edit name
-      </Button>
-      <Button type="button" size={compact ? "small" : "medium"} color="error" onClick={() => setDeleting(true)}>
+      </ActionButton>
+      <ActionButton
+        tone="error"
+        size={compact ? "small" : "medium"}
+        onClick={() => setDeleting(true)}
+      >
         Delete
-      </Button>
+      </ActionButton>
       <Dialog open={editing} onClose={() => setEditing(false)} fullWidth maxWidth="xs">
         {editing ? (
           <RenameWidgetForm widgetId={widgetId} name={name} returnTo={returnTo} onClose={() => setEditing(false)} />

@@ -10,6 +10,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import ActionButton from "@/components/action-button";
 import { submitFormOnEnter } from "@/lib/submit-on-enter";
 import { deletePayment, updatePayment, type FormState } from "./actions";
 import type { PaymentMember } from "./add-payment-dialog";
@@ -39,13 +40,13 @@ export default function PaymentRowActions({
   const [deleting, setDeleting] = useState(false);
 
   return (
-    <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 0.5 }}>
-      <Button type="button" size="small" onClick={() => setEditing(true)}>
+    <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 0.75 }}>
+      <ActionButton onClick={() => setEditing(true)}>
         Edit
-      </Button>
-      <Button type="button" size="small" color="error" onClick={() => setDeleting(true)}>
+      </ActionButton>
+      <ActionButton tone="error" onClick={() => setDeleting(true)}>
         Delete
-      </Button>
+      </ActionButton>
       <Dialog open={editing} onClose={() => setEditing(false)} fullWidth maxWidth="sm" scroll="paper">
         {editing ? (
           <EditPaymentForm payment={payment} members={members} onClose={() => setEditing(false)} />

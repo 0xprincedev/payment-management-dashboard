@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
@@ -13,6 +12,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
+import ActionButton from "@/components/action-button";
 import { formatAmount, formatAmountInput } from "@/lib/amount";
 import { internalColor, internalLightText } from "@/lib/internal-colors";
 import type { PaymentMember } from "./add-payment-dialog";
@@ -93,13 +93,13 @@ function isPaymentRow(row: ShownRow): row is { key: string; payment: RecordRow }
 
 function ActionSpacer() {
   return (
-    <Box aria-hidden sx={{ display: "flex", justifyContent: "flex-end", gap: 0.5, visibility: "hidden" }}>
-      <Button type="button" size="small" tabIndex={-1}>
+    <Box aria-hidden sx={{ display: "flex", justifyContent: "flex-end", gap: 0.75, visibility: "hidden" }}>
+      <ActionButton tabIndex={-1}>
         Edit
-      </Button>
-      <Button type="button" size="small" tabIndex={-1}>
+      </ActionButton>
+      <ActionButton tabIndex={-1} tone="error">
         Delete
-      </Button>
+      </ActionButton>
     </Box>
   );
 }

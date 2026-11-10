@@ -43,6 +43,7 @@ async function HomeContent() {
         Use the email and password for your account.
       </Typography>
       <SignInForm />
+      <SignUpPrompt />
     </PageShell>
   );
 }
@@ -55,7 +56,28 @@ function HomeFallback() {
       <Skeleton variant="rounded" height={56} />
       <Skeleton variant="rounded" height={56} sx={{ mt: 2 }} />
       <Skeleton variant="rounded" height={42} sx={{ mt: 2 }} />
+      <Skeleton variant="text" width={220} sx={{ mt: 3, mx: "auto" }} />
     </PageShell>
+  );
+}
+
+function SignUpPrompt() {
+  return (
+    <Typography variant="body2" color="text.secondary" sx={{ mt: 3, textAlign: "center" }}>
+      Don&apos;t have an account yet?{" "}
+      <Box
+        component="a"
+        href="/signup"
+        sx={{
+          color: "primary.main",
+          fontWeight: 700,
+          textDecoration: "none",
+          "&:hover": { textDecoration: "underline" },
+        }}
+      >
+        Register now
+      </Box>
+    </Typography>
   );
 }
 

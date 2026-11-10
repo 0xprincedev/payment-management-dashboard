@@ -20,6 +20,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import ActionButton from "@/components/action-button";
 import DragHandle from "@/components/drag-handle";
 import { MemberActionSlot } from "@/components/member-views";
 import type { AccountRecord } from "@/lib/account-record";
@@ -272,18 +273,19 @@ export default function AccountsTable({
                     <TableCell sx={{ minWidth: 180 }}>{row.note}</TableCell>
                     {readOnly ? null : (
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
-                        <Button type="button" size="small" onClick={() => setEditing(row)} disabled={savingOrder}>
+                        <ActionButton
+                          onClick={() => setEditing(row)}
+                          disabled={savingOrder}
+                        >
                           Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="small"
-                          color="error"
+                        </ActionButton>
+                        <ActionButton
+                          tone="error"
                           onClick={() => setDeleting(row)}
                           disabled={savingOrder}
                         >
                           Delete
-                        </Button>
+                        </ActionButton>
                       </TableCell>
                     )}
                   </TableRow>

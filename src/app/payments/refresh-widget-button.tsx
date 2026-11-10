@@ -18,6 +18,7 @@ export default function RefreshWidgetButton() {
       onClick={() => startTransition(() => router.refresh())}
       sx={{
         position: "absolute",
+        zIndex: 1,
         top: { xs: 10, sm: 12 },
         right: { xs: 10, sm: 12 },
         color: "text.secondary",

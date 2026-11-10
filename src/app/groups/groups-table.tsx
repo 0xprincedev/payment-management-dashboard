@@ -24,6 +24,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import ActionButton from "@/components/action-button";
 import DragHandle from "@/components/drag-handle";
 import { submitFormOnEnter } from "@/lib/submit-on-enter";
 import {
@@ -339,13 +340,13 @@ function GroupActions({
   const [deleting, setDeleting] = useState(false);
 
   return (
-    <Box sx={{ display: "flex", gap: 0.5 }}>
-      <Button type="button" size="small" onClick={() => setEditing(true)}>
+    <Box sx={{ display: "flex", gap: 0.75 }}>
+      <ActionButton onClick={() => setEditing(true)}>
         Edit
-      </Button>
-      <Button type="button" size="small" color="error" onClick={() => setDeleting(true)}>
+      </ActionButton>
+      <ActionButton tone="error" onClick={() => setDeleting(true)}>
         Delete
-      </Button>
+      </ActionButton>
       <Dialog open={editing} onClose={() => setEditing(false)} fullWidth maxWidth="xs">
         {editing ? (
           <RenameGroupForm

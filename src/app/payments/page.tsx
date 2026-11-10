@@ -104,12 +104,14 @@ function WidgetLink({
         "&:hover": { borderColor: "primary.main" },
       }}
     >
-      <RefreshWidgetButton />
       <Box
         component="a"
         href={`/payments/${widget.id}`}
-        sx={{ display: "block", minWidth: 0, pr: 5, color: "inherit", textDecoration: "none" }}
-      >
+        aria-label={widget.name}
+        sx={{ position: "absolute", inset: "-1px", zIndex: 0, borderRadius: "inherit" }}
+      />
+      <RefreshWidgetButton />
+      <Box sx={{ position: "relative", zIndex: 1, pointerEvents: "none", pr: 5, "& button, & a": { pointerEvents: "auto" } }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
           {widget.name}
         </Typography>
@@ -128,17 +130,17 @@ function WidgetLink({
             </Typography>
           </Box>
         ) : null}
-      </Box>
-      {summary && summary.internalByGroup.length > 0 ? (
-        <GroupTransactions widgetId={widget.id} ownGroupId={ownGroupId} groups={summary.internalByGroup} />
-      ) : null}
-      <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, mt: 1.5 }}>
-        <ExportDialog widgetId={widget.id} defaultFilename={widget.name} size="small" />
-        {canManage ? (
-          <Box sx={{ ml: "auto" }}>
-            <WidgetActions widgetId={widget.id} name={widget.name} returnTo="/payments" compact />
-          </Box>
+        {summary && summary.internalByGroup.length > 0 ? (
+          <GroupTransactions widgetId={widget.id} ownGroupId={ownGroupId} groups={summary.internalByGroup} />
         ) : null}
+        <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, mt: 1.5 }}>
+          <ExportDialog widgetId={widget.id} defaultFilename={widget.name} size="small" />
+          {canManage ? (
+            <Box sx={{ ml: "auto" }}>
+              <WidgetActions widgetId={widget.id} name={widget.name} returnTo="/payments" compact />
+            </Box>
+          ) : null}
+        </Box>
       </Box>
     </Paper>
   );
